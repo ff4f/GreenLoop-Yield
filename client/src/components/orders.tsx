@@ -4,22 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Progress } from "@/components/ui/progress";
 import { ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { hederaService } from "@/lib/hedera-mock";
-
-const mockOrders = [
-  {
-    orderId: "GLY-2025-0001",
-    lotId: "PBCL-MG-IDN-001",
-    quantity: 240,
-    pricePerTon: 10,
-    totalValue: 2400,
-    status: "DELIVERED",
-    progress: 75,
-    escrowTxHash: "0x111aaa",
-    deliveryTxHash: "0x222bbb",
-    payoutTxHash: null,
-  }
-];
+import { hederaService, mockOrders } from "@/lib/hedera-mock";
 
 export default function Orders() {
   const { toast } = useToast();
@@ -80,6 +65,7 @@ export default function Orders() {
               <TableRow>
                 <TableHead>OrderID</TableHead>
                 <TableHead>Lot</TableHead>
+                <TableHead>Buyer</TableHead>
                 <TableHead>Qty (t)</TableHead>
                 <TableHead>Price/t</TableHead>
                 <TableHead>Value ($)</TableHead>
@@ -91,9 +77,12 @@ export default function Orders() {
               {mockOrders.map((order) => (
                 <TableRow key={order.orderId} data-testid={`order-row-${order.orderId}`}>
                   <TableCell>
-                    <span className="font-mono text-sm">{order.orderId}</span>
+                    <span className="font-mono text-xs">{order.orderId}</span>
                   </TableCell>
-                  <TableCell>{order.lotId}</TableCell>
+                  <TableCell className="text-sm">{order.lotId}</TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs">{order.buyerAccount}</span>
+                  </TableCell>
                   <TableCell>{order.quantity}</TableCell>
                   <TableCell>${order.pricePerTon}</TableCell>
                   <TableCell>${order.totalValue.toLocaleString()}</TableCell>
@@ -107,22 +96,24 @@ export default function Orders() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex space-x-2">
-                      <Button 
-                        size="sm" 
-                        variant="secondary"
-                        onClick={() => handleMarkDelivered(order.orderId)}
-                        data-testid={`button-release-escrow-${order.orderId}`}
-                      >
-                        Release Escrow
-                      </Button>
+                    <div className="flex space-x-1">
+                      {order.status !== "SETTLED" && (
+                        <Button 
+                          size="sm" 
+                          variant="secondary"
+                          onClick={() => handleMarkDelivered(order.orderId)}
+                          data-testid={`button-release-escrow-${order.orderId}`}
+                        >
+                          {order.status === "ESCROWED" ? "Mark Delivered" : "Release Escrow"}
+                        </Button>
+                      )}
                       <Button 
                         size="sm" 
                         variant="outline"
                         onClick={() => handleDownloadContract(order.orderId)}
                         data-testid={`button-download-contract-${order.orderId}`}
                       >
-                        Contract PDF
+                        PDF
                       </Button>
                     </div>
                   </TableCell>
@@ -133,51 +124,59 @@ export default function Orders() {
         </CardContent>
       </Card>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-muted-foreground">Escrow Lock</span>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={() => openHashscan("0x111aaa")}
-                className="font-mono text-sm p-0 h-auto"
-                data-testid="tx-escrow-lock"
-              >
-                0x111aaa <ExternalLink className="ml-1 w-3 h-3" />
-              </Button>
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Transactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {["0x111aaa", "0x222bbb", "0x333ccc", "0x444ddd", "0x555eee"].map((hash, index) => (
+                <div key={hash} className="flex items-center justify-between py-1">
+                  <span className="text-xs text-muted-foreground">
+                    {index === 0 ? "Escrow Lock" : index === 1 ? "Delivery" : index === 2 ? "Payout" : index === 3 ? "Settlement" : "Contract"}
+                  </span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => openHashscan(hash)}
+                    className="font-mono text-xs p-0 h-auto"
+                    data-testid={`tx-${hash}`}
+                  >
+                    {hash} <ExternalLink className="ml-1 w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-muted-foreground">Delivery Tx</span>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={() => openHashscan("0x222bbb")}
-                className="font-mono text-sm p-0 h-auto"
-                data-testid="tx-delivery"
-              >
-                0x222bbb <ExternalLink className="ml-1 w-3 h-3" />
-              </Button>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>File Storage (HFS)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {["0.0.700111", "0.0.700112", "0.0.700113", "0.0.700114", "0.0.700115"].map((fileId, index) => (
+                <div key={fileId} className="flex items-center justify-between py-1">
+                  <span className="text-xs text-muted-foreground">
+                    {index === 0 ? "Contract PDF" : index === 1 ? "Delivery Cert" : index === 2 ? "KYC Doc" : index === 3 ? "Invoice" : "Receipt"}
+                  </span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => openHashscan(fileId)}
+                    className="font-mono text-xs p-0 h-auto text-primary"
+                    data-testid={`file-${fileId}`}
+                  >
+                    {fileId} <ExternalLink className="ml-1 w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
             </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-muted-foreground">Payout Tx</span>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={() => openHashscan("0x333ccc")}
-                className="font-mono text-sm p-0 h-auto"
-                data-testid="tx-payout"
-              >
-                0x333ccc <ExternalLink className="ml-1 w-3 h-3" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

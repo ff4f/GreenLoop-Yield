@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Leaf, ArrowLeft, Wallet } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Leaf, ArrowLeft, Wallet, ShoppingCart, Package, FilePlus, Activity, Award } from "lucide-react";
 import { useLocation } from "wouter";
 import { useWallet } from "@/hooks/use-wallet";
 
@@ -10,37 +10,9 @@ import ProjectSheets from "@/components/project-sheets";
 import ProofFeed from "@/components/proof-feed";
 import ClaimsHelper from "@/components/claims-helper";
 
-type TabType = 'marketplace' | 'orders' | 'project-sheets' | 'proof-feed' | 'claims-helper';
-
-const tabs = [
-  { id: 'marketplace', label: 'Marketplace', icon: 'shopping-cart' },
-  { id: 'orders', label: 'Orders', icon: 'package' },
-  { id: 'project-sheets', label: 'Project Sheets', icon: 'file-plus' },
-  { id: 'proof-feed', label: 'Proof Feed', icon: 'activity' },
-  { id: 'claims-helper', label: 'Claims Helper', icon: 'award' },
-];
-
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<TabType>('marketplace');
   const [, navigate] = useLocation();
   const { isConnected, account, connect, isConnecting } = useWallet();
-
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'marketplace':
-        return <Marketplace />;
-      case 'orders':
-        return <Orders />;
-      case 'project-sheets':
-        return <ProjectSheets />;
-      case 'proof-feed':
-        return <ProofFeed />;
-      case 'claims-helper':
-        return <ClaimsHelper />;
-      default:
-        return <Marketplace />;
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -75,28 +47,51 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar Navigation */}
-        <nav className="w-64 bg-card border-r border-border p-4" data-testid="sidebar-navigation">
-          <div className="space-y-2">
-            {tabs.map((tab) => (
-              <Button
-                key={tab.id}
-                variant={activeTab === tab.id ? "secondary" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab(tab.id as TabType)}
-                data-testid={`tab-${tab.id}`}
-              >
-                <span>{tab.label}</span>
-              </Button>
-            ))}
-          </div>
-        </nav>
+      <div className="p-6">
+        <Tabs defaultValue="marketplace" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsTrigger value="marketplace" className="flex items-center space-x-2" data-testid="tab-marketplace">
+              <ShoppingCart className="w-4 h-4" />
+              <span>Marketplace</span>
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="flex items-center space-x-2" data-testid="tab-orders">
+              <Package className="w-4 h-4" />
+              <span>Orders</span>
+            </TabsTrigger>
+            <TabsTrigger value="project-sheets" className="flex items-center space-x-2" data-testid="tab-project-sheets">
+              <FilePlus className="w-4 h-4" />
+              <span>Project Sheets</span>
+            </TabsTrigger>
+            <TabsTrigger value="proof-feed" className="flex items-center space-x-2" data-testid="tab-proof-feed">
+              <Activity className="w-4 h-4" />
+              <span>Proof Feed</span>
+            </TabsTrigger>
+            <TabsTrigger value="claims-helper" className="flex items-center space-x-2" data-testid="tab-claims-helper">
+              <Award className="w-4 h-4" />
+              <span>Claims Helper</span>
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Main Content Area */}
-        <main className="flex-1 p-6 overflow-auto" data-testid="main-content">
-          {renderTabContent()}
-        </main>
+          <TabsContent value="marketplace" className="mt-0">
+            <Marketplace />
+          </TabsContent>
+          
+          <TabsContent value="orders" className="mt-0">
+            <Orders />
+          </TabsContent>
+          
+          <TabsContent value="project-sheets" className="mt-0">
+            <ProjectSheets />
+          </TabsContent>
+          
+          <TabsContent value="proof-feed" className="mt-0">
+            <ProofFeed />
+          </TabsContent>
+          
+          <TabsContent value="claims-helper" className="mt-0">
+            <ClaimsHelper />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

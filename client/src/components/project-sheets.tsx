@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { hederaService } from "@/lib/hedera-mock";
+import { hederaService, mockProjectSheets } from "@/lib/hedera-mock";
 
 interface ProjectForm {
   projectName: string;
@@ -122,7 +122,7 @@ export default function ProjectSheets() {
         <p className="text-muted-foreground">Developer tools for lot generation with real-time calculations</p>
       </div>
       
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>New Project Input</CardTitle>
@@ -256,6 +256,70 @@ export default function ProjectSheets() {
                 </CardContent>
               </Card>
             )}
+          </CardContent>
+        </Card>
+        
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Generated Project Sheets</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {mockProjectSheets.map((sheet) => (
+                <Card key={sheet.id} className="border-l-4 border-l-primary">
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-semibold text-sm">{sheet.projectName}</h4>
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          sheet.status === 'GENERATED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 
+                          'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        }`}>
+                          {sheet.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{sheet.location}</p>
+                      
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span>Area/Units:</span>
+                          <span className="font-mono">{sheet.area || sheet.units || sheet.capacity}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Listed Tons:</span>
+                          <span className="font-mono text-primary font-semibold">{sheet.listedTons} t</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Est. Value:</span>
+                          <span className="font-mono text-primary font-semibold">${sheet.estimatedValue.toLocaleString()}</span>
+                        </div>
+                        {sheet.lotId && (
+                          <div className="flex justify-between">
+                            <span>Lot ID:</span>
+                            <span className="font-mono text-xs">{sheet.lotId}</span>
+                          </div>
+                        )}
+                        {sheet.tokenId && (
+                          <div className="flex justify-between">
+                            <span>Token ID:</span>
+                            <span className="font-mono text-xs text-primary">{sheet.tokenId}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex space-x-2 pt-2">
+                        <Button size="sm" variant="outline" className="flex-1">
+                          Edit
+                        </Button>
+                        <Button size="sm" className="flex-1 bg-primary text-primary-foreground">
+                          Deploy
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>

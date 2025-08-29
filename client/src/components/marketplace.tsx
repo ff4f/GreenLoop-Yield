@@ -65,37 +65,44 @@ export default function Marketplace() {
         <p className="text-muted-foreground">Parcel-Backed Carbon Credit Lots (PBCL) with proof chains</p>
       </div>
       
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {mockCarbonLots.map((lot) => (
           <Card key={lot.id} className="dense-grid" data-testid={`lot-card-${lot.lotId}`}>
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-start">
-                <CardTitle className="text-lg">{lot.lotId}</CardTitle>
-                <Badge className="proof-badge">ICVCM-ready</Badge>
-              </div>
+            <div className="relative">
+              <img 
+                src={lot.projectImage} 
+                alt={lot.projectName}
+                className="w-full h-32 object-cover rounded-t-lg"
+              />
+              <Badge className="absolute top-2 right-2 proof-badge">ICVCM-ready</Badge>
+            </div>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{lot.lotId}</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               <div>
-                <div className="text-foreground font-medium">{lot.projectName} ({lot.location})</div>
-                <div className="text-muted-foreground">
-                  {lot.listedTons} t @ ${lot.pricePerTon}/t • Delivery {lot.deliveryWindow}
+                <div className="text-foreground font-medium text-sm">{lot.projectName}</div>
+                <div className="text-xs text-muted-foreground">{lot.location}</div>
+                <div className="text-muted-foreground text-xs">
+                  {lot.listedTons} t @ ${lot.pricePerTon}/t • {lot.deliveryWindow}
                 </div>
-                <div className="flex space-x-4 text-sm text-muted-foreground">
+                <div className="flex space-x-2 text-xs text-muted-foreground">
                   <span>Buffer: {lot.bufferPercent}%</span>
                   {lot.forwardPercent && <span>Forward: {lot.forwardPercent}%</span>}
                 </div>
               </div>
               
-              <div className="flex space-x-3">
+              <div className="flex space-x-2">
                 <Dialog>
                   <DialogTrigger asChild>
                     <Button 
                       variant="secondary" 
+                      size="sm"
                       className="flex-1"
                       onClick={() => handleViewProof(lot.lotId)}
                       data-testid={`button-view-proof-${lot.lotId}`}
                     >
-                      View Proof
+                      Proof
                     </Button>
                   </DialogTrigger>
                   <DialogContent data-testid={`proof-dialog-${lot.lotId}`}>
@@ -156,11 +163,12 @@ export default function Marketplace() {
                 </Dialog>
                 
                 <Button 
+                  size="sm"
                   className="flex-1 bg-primary text-primary-foreground hover:opacity-90"
                   onClick={() => handleBuyEscrow(lot.lotId, parseInt(lot.listedTons), parseInt(lot.pricePerTon))}
                   data-testid={`button-buy-escrow-${lot.lotId}`}
                 >
-                  Buy (Escrow)
+                  Buy
                 </Button>
               </div>
             </CardContent>

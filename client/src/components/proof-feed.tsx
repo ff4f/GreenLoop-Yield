@@ -70,40 +70,49 @@ export default function ProofFeed() {
         </Button>
       </div>
       
-      <div className="space-y-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {mockProofEntries.map((entry) => (
-          <Card key={entry.id} data-testid={`proof-entry-${entry.id}`}>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="flex-shrink-0">
-                  {getProofIcon(entry.proofType)}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center space-x-4 mb-2">
-                    <span className="text-sm text-muted-foreground" data-testid={`proof-timestamp-${entry.id}`}>
-                      {new Date(entry.timestamp).toLocaleString()}
-                    </span>
-                    <span className="text-sm font-medium text-foreground" data-testid={`proof-type-${entry.id}`}>
+          <Card key={entry.id} data-testid={`proof-entry-${entry.id}`} className="border-l-4 border-l-primary">
+            <CardContent className="p-4">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0">
+                    {getProofIcon(entry.proofType)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-sm text-foreground" data-testid={`proof-type-${entry.id}`}>
                       {entry.proofType}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <Button
-                      variant="link"
-                      size="sm"
-                      onClick={() => openHashscan(entry.hash)}
-                      className="font-mono text-sm p-0 h-auto"
-                      data-testid={`proof-hash-${entry.id}`}
-                    >
-                      hash {entry.hash} <ExternalLink className="ml-1 w-3 h-3" />
-                    </Button>
-                    {entry.topicId && (
-                      <span className="text-xs text-muted-foreground">
-                        Topic: {entry.topicId} • Seq: #{entry.sequenceNumber}
-                      </span>
-                    )}
+                    </div>
+                    <div className="text-xs text-muted-foreground" data-testid={`proof-timestamp-${entry.id}`}>
+                      {new Date(entry.timestamp).toLocaleDateString()} {new Date(entry.timestamp).toLocaleTimeString()}
+                    </div>
                   </div>
                 </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Lot:</span>
+                    <span className="font-mono">{entry.lotId}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Topic:</span>
+                    <span className="font-mono">{entry.topicId}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Seq:</span>
+                    <span className="font-mono">#{entry.sequenceNumber}</span>
+                  </div>
+                </div>
+                
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => openHashscan(entry.hash)}
+                  className="font-mono text-xs p-0 h-auto w-full text-left justify-start"
+                  data-testid={`proof-hash-${entry.id}`}
+                >
+                  {entry.hash} <ExternalLink className="ml-1 w-3 h-3" />
+                </Button>
               </div>
             </CardContent>
           </Card>
