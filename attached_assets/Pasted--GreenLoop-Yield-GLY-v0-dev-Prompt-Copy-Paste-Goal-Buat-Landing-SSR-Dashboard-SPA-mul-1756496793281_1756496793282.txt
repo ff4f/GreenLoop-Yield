@@ -1,0 +1,387 @@
+🌱 GreenLoop Yield (GLY) — v0.dev Prompt (Copy-Paste)
+
+Goal: Buat Landing (SSR) + Dashboard (SPA multi-tab) bertema eco-green Web3 modern, super dense, tanpa tombol mati.
+Prinsip saklek: Setiap aksi user selalu mengeluarkan bukti → Tx Hash / FileId (HFS) / TopicId+Seq (HCS) / TokenId (HTS) + toast microcopy + link Hashscan/Mirror.
+Hedera 100% native: HTS (FT “ton” & NFT badge), HCS (proof & claim anchor), HFS (PDF/JSON), Mirror Node (verifikasi). Wallet: HashConnect.
+
+🎯 BRAND & GAYA
+
+Tema: eco-green (#16A34A, #065F46), aksen netral (#111827/#6B7280), dark-friendly.
+
+Komponen: shadcn/ui (Card, Button, Badge, Dialog, Table, Tabs, Alert, Toast).
+
+Nuansa: padat, ringkas, “proof-first”. Ikon lucide: Trees, Leaf, ShieldCheck, FileText, Globe2, Wallet, Hash, QrCode.
+
+Aturan UX: setiap card/tombol → output nyata (hash/fileId/topicId/tokenId). Tidak ada placeholder kosong.
+
+🏁 LANDING (SSR) — urutan wajib
+0) Hero (Hook kuat)
+
+Headline: Unlock Africa’s $6B Carbon Market — Proof-First, Integrity-Ready
+
+Sub-headline: Parcel-backed carbon credits with photo, satellite & ledger proofs. Forward deals (AMC) with escrow. Every click = evidence.
+
+Primary CTA: Explore Marketplace → route ke /app
+
+Secondary CTA: See How It Works → scroll ke alur 6 langkah
+
+Stat Pills (3 buah):
+
+US$6B Africa 2030 (300M credits/yr)
+
+US$723M VCM 2023 (avg US$6.53/t)
+
+5–15M t/yr SOM target GLY (3 tahun)
+
+1) Problem (pakai angka)
+
+Pasar karbon terkoreksi: 2023 nilai transaksi hanya US$723M, harga rata-rata US$6.53/tCO₂e → buyer menahan diri karena krisis integritas.
+
+Afrika under-supplied: target 300M kredit/tahun di 2030 (~US$6B) ada, tapi supply macet (modal awal & bukti MRV tersebar).
+
+4.000+ perusahaan berkomitmen Net Zero, butuh kredit berkualitas (klaim aman), namun takut reputasi (“zombie credits”).
+
+2) Solution (GLY)
+
+Parcel → tCO₂e konservatif (hektar jadi ton; ada buffer & forward%)
+
+Forward/AMC + Escrow (deal pre-order, developer dapat modal lebih cepat)
+
+Proof-of-Impact feed (foto geotag, NDVI satelit, QC) → hash ke HCS
+
+Claims Helper → Claim Draft (PDF/JSON), siap audit & CSR (ICVCM/VCMI-style)
+
+3) Product (fitur nyata)
+
+Marketplace: lot 100–1.000 tCO₂e (parcel-backed), harga transparan, proof klik-bukti
+
+Orders: escrow, kontrak, delivery, settlement (semua ada hash)
+
+Project Sheets (Developer): input area/rate/buffer/forward → auto ton & nilai
+
+Proof Feed: timeline bukti → hash & link Mirror/Hashscan
+
+Claims Helper: stepper 8 langkah → fileId (HFS) + anchor (HCS) + NFT badge (HTS) (opsional)
+
+4) Market Size
+
+TAM VCM 2030 > US$50B
+
+SAM Afrika 2030 ~ US$6B (300M credits × asumsi US$20/t high-integrity)
+
+SOM GLY (3 thn): 5–15M t/yr (≈ US$50–150M/yr @ US$10/t)
+
+5) Target Customer
+
+Buyer korporat Net-Zero (FMCG, telco, logistik, fintech) → 100k–1M t/yr
+
+Aggregator/Retailer/Bursa → perlu pasokan kredibel + paket proof
+
+Project Developer Afrika (mangrove, cookstove, agroforestry, methane) → perlu modal & akses pasar
+
+6) Value Proposition (angka & manfaat)
+
+Buyer: klaim aman (proof + claim draft), harga transparan, verifikasi 1-klik
+
+Developer: modal lebih cepat (AMC/escrow), payout split otomatis, exposure ke buyer global
+
+Pasar: trust → transaksi naik, supply Afrika terakselerasi
+
+7) Ask (minta dukungan)
+
+Buyer anchor: ≥ 50,000 tCO₂e forward deal (mix proyek)
+
+Developer onboarding: ≥ 3 proyek Tier-1 (≥ 1Mt kumulatif 7–10 th)
+
+Operasional 12 bulan: US$500k (origination, MRV tooling, compliance)
+
+Kemitraan: registry, verifier, bursa global
+
+Footer strip (Trust bar): “Every click = evidence: HTS / HCS / HFS / Mirror Node”.
+
+🖥️ DASHBOARD (SPA Multi-Tab Sidebar)
+
+Sidebar: Marketplace • Orders • Project Sheets • Proof Feed • Claims Helper
+
+Konvensi output:
+
+Tx Hash (HBAR/HTS) → format 0x… + link Hashscan
+
+HFS fileId → 0.0.7xxxxx (PDF/JSON)
+
+HCS topicId + seq → 0.0.9xxxxx / #12345
+
+HTS tokenId (FT “ton”) → 0.0.6xxxxx ; NFT badge → 0.0.6yyyyy#serial
+
+1) 🛒 Marketplace (Track: On-chain Finance & RWA)
+
+Tujuan: Jual Parcel-Backed Credit Lot (PBCL) dengan bukti & harga jelas.
+Grid Kartu (4 contoh dummy—wajib tampil):
+
+PBCL-MG-IDN-001 — Mangrove 100 ha (ID) — 240 t @ $10/t — Delivery Q1’26 — Buffer 20% — Forward 25%
+
+PBCL-CC-KEN-002 — Cookstove 500 units (KE) — 600 t @ $9/t — Delivery Q2’26 — Buffer 15%
+
+PBCL-AG-UGA-003 — Agroforestry 50 ha (UG) — 180 t @ $11/t — Delivery Q3’26 — Buffer 20%
+
+PBCL-WM-NGA-004 — Methane Digester (NG) — 320 t @ $8/t — Delivery Q4’26 — Buffer 10%
+
+Tiap Kartu (field & aksi):
+
+Field: lot_id, project_name, area/units, listed_tons, price_per_ton, delivery_window, buffer%, forward%, tags ICVCM-ready
+
+Button 1: View Proof → Dialog berisi 3 entri (ikon + label + timestamp + hash):
+
+📸 Photo geotag → 0xabc123
+
+🛰️ NDVI delta → 0xdef456
+
+✅ QC check → 0xghi789
+Toast: “Proof loaded. Click any hash to verify.”
+
+Button 2: Buy (Escrow) → Connect wallet (HashConnect) → jumlah confirm → EscrowTx Hash + OrderID
+Toast: “Escrow locked • OrderID GLY-2025-0001 • Tx 0x111aaa”
+
+Hedera-native:
+
+HTS: FT “ton” per lot (TokenCreate+Mint sesuai listed_tons)
+
+HTS Transfer: buyer → escrow acct
+
+HCS: message ORDER_CREATED, ESCROW_LOCKED
+
+HFS: auto-generate Contract PDF (opsi) → fileId ditampilkan
+
+Acceptance:
+
+Minimal 4 kartu tampil; kedua tombol aktif; setiap klik ada hash/link.
+
+2) 📦 Orders (Finance + Settlement)
+
+Tabel kolom: OrderID | Lot | Qty (t) | Price/t | Value ($) | Status | Docs | Tx
+Contoh baris:
+
+GLY-2025-0001 | PBCL-MG-IDN-001 | 240 | $10 | $2,400 | ESCROWED (25%) → DELIVERED (75%) → SETTLED (100%) | Contract.pdf | 0x111aaa / 0x222bbb / 0x333ccc
+
+Aksi:
+
+Mark Delivered (Admin demo) → input RegistryRef (placeholder) → tampil DeliveryTx Hash 0x222bbb
+
+Release Escrow → tampil PayoutTx Hash 0x333ccc (split dev/platform)
+
+Download Contract PDF → fileId 0.0.700111
+
+Hedera-native:
+
+HTS Transfer payout (HBAR/USDC-HTS)
+
+HCS: DELIVERED, SETTLED events
+
+HFS: Delivery Certificate (PDF) → 0.0.700222
+
+Acceptance:
+
+Status progress bar 25→75→100% berubah saat aksi.
+
+Selalu tampil txHash & fileId setelah aksi.
+
+3) 🧑‍🌾 Project Sheets (Developer) (AI & DePIN)
+
+Form fields:
+ProjectName, Location, Area_ha, Rate_t/ha/yr, Buffer_%, Forward_% + Upload: Foto, GeoJSON (parcel), Report PDF.
+Auto-calc (real-time):
+
+Expected = Area × Rate
+
+After Buffer = Expected × (1−Buffer%)
+
+Listed Tons = AfterBuffer × Forward%
+
+Value @ $10/t (ubahable)
+
+Output setelah “Generate Lot”:
+
+Lot ID (auto): PBCL-AG-UGA-005
+
+Preview Kartu + TokenId (HTS FT) 0.0.600111 + Minted = Listed Tons
+
+Proof log (HCS) untuk upload file (hash file)
+
+Docs (HFS): report → fileId 0.0.700333
+
+Acceptance:
+
+Mengunggah file mengeluarkan hash di feed.
+
+Generate Lot menampilkan tokenId & jumlah minted.
+
+4) 🧾 Proof-of-Impact Feed (DLT for Ops)
+
+Timeline (infinite scroll, filter project_id/lot_id):
+
+📸 2025-07-01 09:10Z — Photo geotag — hash 0xabc111
+
+🛰️ 2025-07-15 00:00Z — NDVI update — hash 0xdef222
+
+✅ 2025-07-20 14:00Z — QC check — hash 0xghi333
+Klik hash → buka Hashscan/Mirror.
+
+Aksi demo: Add Proof Entry → pilih tipe + upload → HFS fileId + HCS topic seq tampil.
+
+Hedera-native:
+
+HCS TopicMessageSubmit (payload: {lot_id, type, sha256, fileId?}) → topicId 0.0.900123
+
+HFS: simpan file bukti; hash-nya direkam ke HCS
+
+Acceptance:
+
+Setiap entry minimal punya timestamp + hash + link.
+
+5) 🏁 Claims Helper (Immersive/Impact)
+
+Closed Journey 8 langkah (wajib lengkap), semua langkah ada output.
+
+Pra-syarat otomasi:
+
+Lot SETTLED; FT “ton” untuk lot tsb BURN atau transfer ke retirement acct (anti double-claim).
+
+Langkah 1 — Select Lots & Year
+
+UI: checklist lots eligible + input Claim Year (default tahun berjalan)
+
+Output: ringkasan Total Tons (mis. 840 t)
+
+Langkah 2 — Buyer Details
+
+Fields: Buyer Legal Name, Jurisdiction Note (ops), CSR Link (ops)
+
+Output: Claim JSON (draft) (preview on-screen)
+
+Langkah 3 — Validate
+
+Validasi status lot (SETTLED) + retire/burn FT “ton”
+
+Output: label “Validated” + daftar Tx verifikasi (Mirror)
+
+Langkah 4 — Generate Claim PDF
+
+Render PDF (cover, summary, tabel lots, daftar tx hash, QR)
+
+Output: HFS fileId_pdf 0.0.700567 (tampilkan) + tombol Download
+
+Langkah 5 — Export Claim JSON
+
+Simpan JSON final (isi sama dengan PDF)
+
+Output: HFS fileId_json 0.0.700568
+
+Langkah 6 — Anchor to Ledger (HCS)
+
+Kirim SHA-256 dari PDF+JSON ke topic 0.0.900456
+
+Output: AnchorTx Hash + Message Seq (mis. #1287)
+
+Langkah 7 — Mint Claim Badge (Opsional)
+
+Mint HTS NFT metadata (link fileId_pdf/json, topic_seq, total_tons, year)
+
+Output: TokenId 0.0.600222 #1 → auto transfer ke wallet buyer
+
+Langkah 8 — Share & Verify
+
+Copy Proof Pack (JSON kecil) + Download ZIP (PDF+JSON)
+
+Verify button: re-hitung hash lokal, cocokin dengan HCS; cek fileId hidup; cek NFT kepemilikan
+
+Output: Checklist hijau semua ✅
+
+Contoh “Proof Pack” (copyable):
+
+{
+  "claim_id": "GLY-CLM-2025-0001",
+  "buyer": "EcoBrand Corp",
+  "year": 2025,
+  "lots": [
+    {"lot_id":"PBCL-MG-IDN-001","tons":240},
+    {"lot_id":"PBCL-CC-KEN-002","tons":600}
+  ],
+  "total_tons": 840,
+  "files": {"pdf":"0.0.700567","json":"0.0.700568"},
+  "anchors": {"topic_id":"0.0.900456","seq":1287},
+  "tx": {"escrow":"0x111aaa","delivery":"0x222bbb","payout":"0x333ccc"},
+  "tokens": {"ft_ton":"0.0.600111","badge_nft":"0.0.600222#1"}
+}
+
+
+Microcopy (toast) contoh:
+
+“✅ Validated — lots settled & retired. Ready to generate claim.”
+
+“📄 Claim PDF stored on HFS • fileId 0.0.700567”
+
+“⛓️ Anchored to HCS • topic 0.0.900456 • seq #1287”
+
+“🏷️ NFT Claim Badge minted • 0.0.600222#1”
+
+🧬 Hedera 100% Native — Peta Aksi → Layanan → Output
+
+Connect wallet → HashConnect → accountId
+
+List Lot → HTS FT TokenCreate + Mint → tokenId ton
+
+Buy/Escrow → HTS Transfer → txHash
+
+Contracts/Docs → HFS FileCreate/Append → fileId
+
+Proof events → HCS TopicMessageSubmit → topicId + seq
+
+Delivery → HCS log (+ ops HTS transfer) → txHash
+
+Settle payout → HTS Transfer → txHash
+
+Retire/Burn → HTS Burn / transfer to retirement acct → txHash
+
+Claim Anchor → HCS (hash PDF/JSON) → anchorTx
+
+Claim Badge → HTS NFT Create/Mint/Transfer → tokenId#serial
+
+Verify → Mirror Node read → checklist ✅
+
+📊 Mock Data Wajib Ditampilkan
+
+Lots (4x):
+
+PBCL-MG-IDN-001 | Mangrove 100 ha (ID) | 240 t @ $10/t | Delivery Q1’26 | Buffer 20% | Forward 25%
+PBCL-CC-KEN-002 | Cookstove 500 units (KE) | 600 t @ $9/t | Delivery Q2’26 | Buffer 15%
+PBCL-AG-UGA-003 | Agroforestry 50 ha (UG) | 180 t @ $11/t | Delivery Q3’26 | Buffer 20%
+PBCL-WM-NGA-004 | Methane Digester (NG) | 320 t @ $8/t | Delivery Q4’26 | Buffer 10%
+
+
+Hashes:
+
+Proof: 0xabc123 (photo), 0xdef456 (ndvi), 0xghi789 (qc)
+EscrowTx 0x111aaa | DeliveryTx 0x222bbb | PayoutTx 0x333ccc
+
+
+Hedera IDs:
+
+HCS proof topic: 0.0.900123
+HCS claim topic: 0.0.900456
+HFS files: 0.0.700111 (Contract), 0.0.700222 (Delivery Cert), 0.0.700567 (Claim PDF), 0.0.700568 (Claim JSON)
+HTS FT (ton): 0.0.600111
+HTS NFT (badge): 0.0.600222#1
+
+✅ Acceptance Criteria (harus terpenuhi)
+
+Landing memuat 7 blok (Problem, Solution, Product, Market Size, Target Customer, Value Proposition, Ask) + Hero Hook (US$6B).
+
+SPA punya 5 tab; setiap tab minimal 2 aksi yang menghasilkan output on-screen (hash/fileId/topicId/tokenId).
+
+Claims Helper tampil sebagai stepper 8 tahap; setiap tahap tampilkan output (id/hash) + toast.
+
+Semua hash/IDs klikable ke Hashscan/Mirror (boleh dummy link).
+
+Tidak ada tombol mati / komponen kosong.
+
+Desain dense (tidak banyak whitespace kosong), eco-green, animasi halus.
