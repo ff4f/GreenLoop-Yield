@@ -43,7 +43,10 @@ export default function ProjectSheets() {
     lotId: string;
     tokenId: string;
     fileId: string;
+    proofLogs: Array<{topicId: string; sequenceNumber: number}>;
   } | null>(null);
+
+  const [uploadedFiles, setUploadedFiles] = useState<{[key: string]: string}>({});
 
   const { toast } = useToast();
 
@@ -72,11 +75,25 @@ export default function ProjectSheets() {
     }));
   };
 
+  const handleFileUpload = async (fileType: string) => {
+    // Simulate file upload
+    const mockFile = await hederaService.createFile(`${fileType}-data-${Date.now()}`);
+    setUploadedFiles(prev => ({
+      ...prev,
+      [fileType]: mockFile.fileId
+    }));
+    
+    toast({
+      title: "File Uploaded",
+      description: `${fileType} uploaded to HFS: ${mockFile.fileId}`,
+    });
+  };
+
   const handleGenerateLot = async () => {
-    if (!form.projectName) {
+    if (!form.projectName || !form.location || form.area <= 0) {
       toast({
-        title: "Validation Error",
-        description: "Please enter project name",
+        title: "Validation Error", 
+        description: "Please fill in all required fields",
         variant: "destructive",
       });
       return;
@@ -84,32 +101,61 @@ export default function ProjectSheets() {
 
     try {
       // Generate lot ID
-      const lotId = `PBCL-${Math.random().toString(36).substring(2, 5).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
+      const lotId = `PBCL-${form.projectName.substring(0, 2).toUpperCase()}-${form.location.substring(0, 3).toUpperCase()}-${String(Date.now()).slice(-3)}`;
       
-      // Mock HTS TokenCreate + Mint for listed tons
-      const token = await hederaService.createToken("GLY-TON", calculations.listed);
+      // Create HTS token (fungible)
+      const token = await hederaService.createToken(`GLY-${lotId}`, Math.floor(calculations.listed));
       
-      // Mock HFS FileCreate for project documents
-      const file = await hederaService.createFile(`Project documents for ${form.projectName}`);
-      
-      // Mock HCS message for lot creation
+      // Create HFS file for project data
+      const fileContent = JSON.stringify({
+        projectName: form.projectName,
+        location: form.location,
+        area: form.area,
+        calculations,
+        uploadedFiles,
+        timestamp: new Date().toISOString()
+      });
+      const file = await hederaService.createFile(fileContent);
+
+      // Create HCS topic and submit initial proof logs
       const topicId = await hederaService.createTopic();
-      await hederaService.submitMessage(topicId, `LOT_CREATED:${lotId}`);
+      const proofLogs = [];
+      
+      // Log project creation
+      const createLog = await hederaService.submitMessage(topicId, JSON.stringify({
+        action: "project_created",
+        lotId,
+        tokenId: token.tokenId,
+        fileId: file.fileId,
+        timestamp: new Date().toISOString()
+      }));
+      proofLogs.push({topicId, sequenceNumber: createLog.sequenceNumber});
+      
+      // Log minting
+      const mintLog = await hederaService.submitMessage(topicId, JSON.stringify({
+        action: "tokens_minted",
+        lotId,
+        tokenId: token.tokenId,
+        amount: Math.floor(calculations.listed),
+        timestamp: new Date().toISOString()
+      }));
+      proofLogs.push({topicId, sequenceNumber: mintLog.sequenceNumber});
 
       setGeneratedLot({
         lotId,
         tokenId: token.tokenId,
         fileId: file.fileId,
+        proofLogs,
       });
 
       toast({
-        title: "Lot Generated",
-        description: `Lot generated • ID ${lotId} • Token ${token.tokenId}`,
+        title: "Success",
+        description: `Generated lot ${lotId} with token ${token.tokenId}. Proof logs anchored on HCS.`,
       });
     } catch (error) {
       toast({
-        title: "Generation Failed",
-        description: "Failed to generate lot. Please try again.",
+        title: "Error",
+        description: "Failed to generate lot",
         variant: "destructive",
       });
     }
@@ -198,15 +244,52 @@ export default function ProjectSheets() {
                   />
                 </div>
               </div>
-              <div>
-                <Label htmlFor="files">Upload Files</Label>
-                <Input
-                  id="files"
-                  type="file"
-                  multiple
-                  data-testid="input-files"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Photos, GeoJSON, Report PDF</p>
+              <div className="space-y-3">
+                <Label>File Uploads (HFS)</Label>
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleFileUpload('project-photo')}
+                      data-testid="button-upload-photo"
+                    >
+                      📸 Upload Photo
+                    </Button>
+                    {uploadedFiles['project-photo'] && (
+                      <span className="text-xs font-mono text-primary">{uploadedFiles['project-photo']}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleFileUpload('land-docs')}
+                      data-testid="button-upload-docs"
+                    >
+                      📄 Land Documents
+                    </Button>
+                    {uploadedFiles['land-docs'] && (
+                      <span className="text-xs font-mono text-primary">{uploadedFiles['land-docs']}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleFileUpload('baseline-data')}
+                      data-testid="button-upload-baseline"
+                    >
+                      📊 Baseline Data
+                    </Button>
+                    {uploadedFiles['baseline-data'] && (
+                      <span className="text-xs font-mono text-primary">{uploadedFiles['baseline-data']}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </form>
           </CardContent>
@@ -252,6 +335,29 @@ export default function ProjectSheets() {
                     <div><strong>Lot ID:</strong> <span className="font-mono" data-testid="output-lot-id">{generatedLot.lotId}</span></div>
                     <div><strong>Token ID (HTS):</strong> <span className="font-mono text-primary" data-testid="output-token-id">{generatedLot.tokenId}</span></div>
                     <div><strong>File ID (HFS):</strong> <span className="font-mono text-primary" data-testid="output-file-id">{generatedLot.fileId}</span></div>
+                    <div><strong>Proof Logs (HCS):</strong></div>
+                    <div className="pl-4 space-y-1">
+                      {generatedLot.proofLogs.map((log, index) => (
+                        <div key={index} className="text-xs font-mono">
+                          <span className="text-muted-foreground">{log.topicId}</span>#<span className="text-primary">{log.sequenceNumber}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pt-2">
+                      <Button 
+                        size="sm" 
+                        className="w-full bg-primary text-primary-foreground"
+                        onClick={() => {
+                          toast({
+                            title: "Lot Deployed",
+                            description: `${generatedLot.lotId} now appears on Marketplace`,
+                          });
+                        }}
+                        data-testid="button-deploy-to-marketplace"
+                      >
+                        🚀 Deploy to Marketplace
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

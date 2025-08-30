@@ -28,17 +28,32 @@ export default function Marketplace() {
       const totalValue = tons * pricePerTon;
       const orderId = `GLY-2025-${String(Math.floor(Math.random() * 9000) + 1000)}`;
       
-      // Mock HTS Transfer to escrow
-      const tx = await hederaService.transferToken(
+      // Mock HTS Transfer to escrow smart contract
+      const escrowTx = await hederaService.transferToken(
         "0.0.600111", 
-        "buyer_account", 
-        "escrow_account", 
+        "0.0.123456", // buyer account
+        "0.0.789012", // escrow smart contract
         tons
       );
       
+      // Create HFS file for purchase contract
+      const contractData = {
+        orderId,
+        lotId,
+        quantity: tons,
+        pricePerTon,
+        totalValue,
+        buyer: "0.0.123456",
+        seller: "0.0.456789",
+        timestamp: new Date().toISOString(),
+        escrowTxHash: escrowTx.txHash,
+        status: "ESCROWED"
+      };
+      const contractFile = await hederaService.createFile(JSON.stringify(contractData));
+      
       toast({
-        title: "Escrow Locked",
-        description: `Escrow locked • OrderID ${orderId} • Tx ${tx.txHash}`,
+        title: "Purchase Successful",
+        description: `OrderID: ${orderId} • EscrowTx: ${escrowTx.txHash} • Contract: ${contractFile.fileId}`,
       });
     } catch (error) {
       toast({
