@@ -1,5 +1,5 @@
-// SSR Landing Page for GreenLoop Yield
-// 8 sections with images, captions, and alt text
+// SSR Home Page for GreenLoop Yield
+// Server-side rendered landing page with 8 sections
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
