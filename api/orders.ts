@@ -1,15 +1,27 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
+// @ts-ignore
 import { OrderStatus, LotStatus, canTransitionOrderStatus, calculateOrderFees, ProofLink, MOCK_IDS } from '../shared/schema.js';
+// @ts-ignore
 import { db, QueryHelpers } from '../shared/database.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+// @ts-ignore
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth-guard.js';
+// @ts-ignore
+import { PERMISSIONS, USER_ROLES } from '../shared/guards.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper functions
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-async function logAnalytics(event: string, value: number, metadata: any) {
+async function logAnalytics(event: string, value: number, metadata: any): Promise<void> {
   await QueryHelpers.createAnalytics({
     event,
     value,
@@ -18,7 +30,7 @@ async function logAnalytics(event: string, value: number, metadata: any) {
   });
 }
 
-async function logAudit(userId: string, action: string, resourceType: string, resourceId: string, metadata: any) {
+async function logAudit(userId: string, action: string, resourceType: string, resourceId: string, metadata: any): Promise<void> {
   await QueryHelpers.createAuditLog({
     userId,
     action,
@@ -43,8 +55,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Authentication check for all methods
+    const authResult = await requireAuth(req);
+    if (authResult.error) {
+      return res.status(401).json({ error: authResult.error });
+    }
     switch (method) {
       case 'GET':
+        // Permission check for viewing orders
+        const viewPermissionResult = await requirePermission(req, PERMISSIONS.VIEW_ORDER);
+        if (viewPermissionResult.error) {
+          return res.status(403).json({ error: viewPermissionResult.error });
+        }
+        
         if (orderId) {
           // Get single order
           const order = await QueryHelpers.getOrderById(orderId);
@@ -88,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           // Enrich orders with lot data
           const enrichedOrders = await Promise.all(
-            filteredOrders.map(async (order) => {
+            filteredOrders.map(async (order: any) => {
               const lot = await QueryHelpers.getCarbonLotById(order.lotId);
               return {
                 ...order,
@@ -114,10 +137,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             data: enrichedOrders,
             meta: {
               total: filteredOrders.length,
-              pending: filteredOrders.filter(o => o.status === OrderStatus.PENDING).length,
-              escrowed: filteredOrders.filter(o => o.status === OrderStatus.ESCROWED).length,
-              delivered: filteredOrders.filter(o => o.status === OrderStatus.DELIVERED).length,
-              completed: filteredOrders.filter(o => o.status === OrderStatus.COMPLETED).length
+              // map legacy keys to actual statuses
+            pending: filteredOrders.filter((o: any) => o.status === OrderStatus.PENDING).length,
+            confirmed: filteredOrders.filter((o: any) => o.status === OrderStatus.CONFIRMED).length,
+            processing: filteredOrders.filter((o: any) => o.status === OrderStatus.PROCESSING).length,
+            escrow: filteredOrders.filter((o: any) => o.status === OrderStatus.ESCROW).length,
+            completed: filteredOrders.filter((o: any) => o.status === OrderStatus.COMPLETED).length
             },
             proofLinks: {
               marketplace: `/app#marketplace`,
@@ -127,6 +152,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
       case 'POST':
+        // Permission check for creating orders
+        const createPermissionResult = await requirePermission(req, PERMISSIONS.CREATE_ORDER);
+        if (createPermissionResult.error) {
+          return res.status(403).json({ error: createPermissionResult.error });
+        }
+        
         if (action === 'buy') {
           // Buy/Escrow action from Marketplace
           const { lotId, buyerId, tons, pricePerTon } = req.body;
@@ -161,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Check availability
-          if (lot.availableTons < tons) {
+          if (Number(lot.availableTons) < Number(tons)) {
             return res.status(400).json({ 
               error: 'Insufficient tons available',
               toast: {
@@ -172,31 +203,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Calculate fees
-          const fees = calculateOrderFees(tons, pricePerTon);
+          const fees = calculateOrderFees(Number(tons), Number(pricePerTon));
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2000);
+          await HederaService.simulateNetworkDelay(2000);
           
           // Create escrow transaction
-          const escrowTx = await HederaMockService.transaction.createTransaction(
+          const escrowTx = await HederaService.transaction.createTransaction(
             'ESCROW',
-            fees.totalAmount,
+            fees.total,
             `Escrow for ${tons} tons from ${lot.projectName}`
           );
           
           // Create new order
           const newOrderData = {
-            id: generateId('order'),
+            id: `ORD-${Date.now()}`,
             lotId,
             buyerId,
-            tons,
-            pricePerTon,
+            tons: Number(tons),
+            pricePerTon: Number(pricePerTon),
             subtotal: fees.subtotal,
-            buyerFee: fees.buyerFee,
-            developerFee: fees.developerFee,
-            totalAmount: fees.totalAmount,
-            status: OrderStatus.ESCROWED,
-            escrowTxId: escrowTx.transactionId,
+            platformFee: fees.platformFee,
+            retirementFee: fees.retirementFee,
+            total: fees.total,
+            status: OrderStatus.ESCROW,
+            escrowTxHash: escrowTx.transactionId,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -204,8 +235,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const newOrder = await QueryHelpers.createOrder(newOrderData);
           
           // Update lot availability
-          const newAvailableTons = lot.availableTons - tons;
-          const newLotStatus = newAvailableTons === 0 ? LotStatus.ESCROWED : lot.status;
+          const newAvailableTons = Number(lot.availableTons) - Number(tons);
+          const newLotStatus = newAvailableTons === 0 ? LotStatus.SOLD_OUT : LotStatus.PARTIALLY_SOLD;
           
           await QueryHelpers.updateCarbonLot(lotId, {
             availableTons: newAvailableTons,
@@ -214,18 +245,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           
           // Log analytics and audit
-          await logAnalytics('order_created', tons, { 
+          await logAnalytics('order_created', Number(tons), { 
             lotId, 
             buyerId, 
-            totalAmount: fees.totalAmount,
-            pricePerTon 
+            total: fees.total,
+            pricePerTon: Number(pricePerTon) 
           });
           
           await logAudit(buyerId, 'create_order', 'order', newOrder.id, {
             lotId,
-            tons,
-            totalAmount: fees.totalAmount,
-            escrowTxId: escrowTx.transactionId
+            tons: Number(tons),
+            total: fees.total,
+            escrowTxHash: escrowTx.transactionId
           });
           
           return res.status(201).json({
@@ -234,12 +265,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             proofOutputs: {
               orderId: newOrder.id,
               escrowTxId: escrowTx.transactionId,
-              escrowAmount: `${fees.totalAmount} HBAR escrowed`,
+              escrowAmount: `${fees.total} HBAR escrowed`,
               feeBreakdown: {
                 subtotal: fees.subtotal,
-                buyerFee: `${fees.buyerFee} (3%)`,
-                developerFee: `${fees.developerFee} (5%)`,
-                total: fees.totalAmount
+                platformFee: `${fees.platformFee} (3%)`,
+                retirementFee: `${fees.retirementFee} (5%)`,
+                total: fees.total
               }
             },
             proofLinks: {
@@ -281,6 +312,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
       case 'PUT':
+        // Permission check for updating orders
+        const updatePermissionResult = await requirePermission(req, PERMISSIONS.UPDATE_ORDER);
+        if (updatePermissionResult.error) {
+          return res.status(403).json({ error: updatePermissionResult.error });
+        }
+        
         if (!orderId) {
           return res.status(400).json({ error: 'Order ID is required' });
         }
@@ -301,7 +338,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Check if transition is allowed
-          if (!canTransitionOrderStatus(existingOrder.status, OrderStatus.DELIVERED)) {
+          if (!canTransitionOrderStatus(existingOrder.status, OrderStatus.COMPLETED, true)) {
             return res.status(400).json({ 
               error: `Cannot mark order as delivered from status ${existingOrder.status}`,
               toast: {
@@ -312,27 +349,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
+          await HederaService.simulateNetworkDelay(1500);
           
           // Upload delivery proof to HFS
-          const deliveryFile = await HederaMockService.file.uploadFile(
+          const deliveryFile = await HederaService.file.uploadFile(
             JSON.stringify(deliveryProof || { delivered: true, timestamp: new Date().toISOString() }),
             'application/json'
           );
           
           // Create delivery transaction
-          const deliveryTx = await HederaMockService.transaction.createTransaction(
+          const deliveryTx = await HederaService.transaction.createTransaction(
             'DELIVERY',
             0,
             `Delivery confirmation for order ${orderId}`
           );
           
-          // Update order status
+          // Update order status -> COMPLETED
           const updatedOrder = await QueryHelpers.updateOrder(orderId, {
-            status: OrderStatus.DELIVERED,
-            deliveryTxId: deliveryTx.transactionId,
-            deliveryFileId: deliveryFile.fileId,
-            deliveredAt: new Date().toISOString(),
+            status: OrderStatus.COMPLETED,
+            deliveryRef: deliveryFile.fileId,
             updatedAt: new Date().toISOString()
           });
           
@@ -382,7 +417,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Check if transition is allowed
-          if (!canTransitionOrderStatus(existingOrder.status, OrderStatus.COMPLETED)) {
+          if (!canTransitionOrderStatus(existingOrder.status, OrderStatus.COMPLETED, true, true)) {
             return res.status(400).json({ 
               error: `Cannot release escrow from status ${existingOrder.status}`,
               toast: {
@@ -393,41 +428,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2000);
+          await HederaService.simulateNetworkDelay(2000);
           
-          // Calculate payout split (90% to developer, 10% platform fee)
-          const developerPayout = existingOrder.subtotal * 0.9;
-          const platformFee = existingOrder.subtotal * 0.1;
+          // Calculate payout split (70% developer, 20% investor pool, 10% platform fee)
+          const developerPayout = Number(existingOrder.subtotal) * 0.7;
+          const investorPoolCredit = Number(existingOrder.subtotal) * 0.2;
+          const platformFee = Number(existingOrder.subtotal) * 0.1;
           
           // Create payout transaction
-          const payoutTx = await HederaMockService.transaction.createTransaction(
+          const payoutTx = await HederaService.transaction.createTransaction(
             'PAYOUT',
             developerPayout,
-            `Payout for order ${orderId} - ${existingOrder.tons} tons delivered`
+            `Payout for order ${orderId} - ${existingOrder.tons} tons delivered (70/20/10 split)`
           );
           
-          // Update order status
+          // Record payout split
+          await QueryHelpers.createPayoutSplit({
+            orderId,
+            developerAmount: developerPayout.toFixed(2),
+            investorAmount: investorPoolCredit.toFixed(2),
+            platformFee: platformFee.toFixed(2),
+            txHash: payoutTx.transactionId
+          });
+          
+          // Credit investor pool from settlement
+          await QueryHelpers.creditInvestorPoolFromSettlement({
+            amount: investorPoolCredit.toFixed(2),
+            orderId,
+            txHash: payoutTx.transactionId
+          });
+          
+          // Update order status -> COMPLETED
           const completedOrder = await QueryHelpers.updateOrder(orderId, {
             status: OrderStatus.COMPLETED,
-            payoutTxId: payoutTx.transactionId,
-            developerPayout,
-            platformFee,
-            completedAt: new Date().toISOString(),
+            payoutTxHash: payoutTx.transactionId,
             updatedAt: new Date().toISOString()
           });
           
           // Log analytics and audit
-          await logAnalytics('order_completed', 1, { 
+          await logAnalytics('order_settled', 1, { 
             orderId, 
             tons: existingOrder.tons,
-            developerPayout,
-            platformFee 
+            developerPayout: Number(developerPayout.toFixed(2)),
+            investorPoolCredit: Number(investorPoolCredit.toFixed(2)),
+            platformFee: Number(platformFee.toFixed(2)) 
           });
           
           await logAudit(userId, 'release_escrow', 'order', orderId, {
             payoutTxId: payoutTx.transactionId,
-            developerPayout,
-            platformFee
+            developerPayout: Number(developerPayout.toFixed(2)),
+            investorPoolCredit: Number(investorPoolCredit.toFixed(2)),
+            platformFee: Number(platformFee.toFixed(2))
           });
           
           return res.status(200).json({
@@ -435,16 +486,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             data: completedOrder,
             proofOutputs: {
               payoutTxId: payoutTx.transactionId,
-              developerPayout: `${developerPayout} HBAR (90%)`,
-              platformFee: `${platformFee} HBAR (10%)`,
-              status: 'Completed - escrow released'
+              developerPayout: `${developerPayout.toFixed(2)} HBAR (70%)`,
+              investorPoolCredit: `${investorPoolCredit.toFixed(2)} HBAR (20%)`,
+              platformFee: `${platformFee.toFixed(2)} HBAR (10%)`,
+              status: 'Settled - escrow released'
             },
             proofLinks: {
               transaction: ProofLink.buildTransactionLink(payoutTx.transactionId)
             },
             toast: {
               type: 'success',
-              message: 'Escrow released successfully! Order completed.',
+              message: 'Escrow released successfully! Order settled.',
               links: [
                 {
                   text: 'View Payout Transaction',
@@ -468,6 +520,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
       case 'DELETE':
+        // Permission check for deleting orders
+        const deletePermissionResult = await requirePermission(req, PERMISSIONS.DELETE_ORDER);
+        if (deletePermissionResult.error) {
+          return res.status(403).json({ error: deletePermissionResult.error });
+        }
+        
         if (!orderId) {
           return res.status(400).json({ error: 'Order ID is required' });
         }
@@ -477,13 +535,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(404).json({ error: 'Order not found' });
         }
         
-        // Check if order can be deleted (only PENDING status)
+        // Check if order can be deleted (only CREATED status)
         if (orderToDelete.status !== OrderStatus.PENDING) {
           return res.status(400).json({ 
-            error: 'Only pending orders can be deleted',
+            error: 'Only newly created orders can be deleted',
             toast: {
               type: 'error',
-              message: 'Cannot delete order that has been escrowed or completed.'
+              message: 'Cannot delete order that has been escrowed or settled.'
             }
           });
         }

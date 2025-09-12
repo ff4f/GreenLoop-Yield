@@ -16,7 +16,7 @@ const tabConfigs = {
     ],
     filters: [
       { type: "select", placeholder: "All Types", options: ["Mangrove", "Forest", "Wetland"] },
-      { type: "select", placeholder: "All Status", options: ["Draft", "Generated", "Listed"] }
+      { type: "select", placeholder: "All Status", options: ["draft", "pending_verification", "verified", "listed"] }
     ],
     actions: [
       { label: "New Project", icon: Plus, variant: "default" }
@@ -44,7 +44,7 @@ const tabConfigs = {
       { label: "Success Rate", value: "94", unit: "%" }
     ],
     filters: [
-      { type: "select", placeholder: "All States", options: ["DRAFT", "GENERATED", "LISTED", "ESCROWED"] }
+      { type: "select", placeholder: "All States", options: ["draft", "pending_verification", "verified", "listed", "partially_sold", "sold_out"] }
     ],
     actions: [
       { label: "Refresh States", icon: RefreshCw, variant: "outline" }
@@ -89,7 +89,7 @@ const tabConfigs = {
       { label: "Avg Cycle", value: "12", unit: "days" }
     ],
     filters: [
-      { type: "select", placeholder: "All Status", options: ["ESCROWED", "DELIVERED", "SETTLED"] },
+      { type: "select", placeholder: "All Status", options: ["pending", "confirmed", "processing", "escrow", "completed"] },
       { type: "search", placeholder: "Search Order ID..." }
     ],
     actions: [
@@ -123,7 +123,7 @@ const tabConfigs = {
     ],
     filters: [
       { type: "select", placeholder: "All Years", options: ["2025", "2024", "2023"] },
-      { type: "select", placeholder: "All Status", options: ["SETTLED", "RETIRED"] }
+      { type: "select", placeholder: "All Status", options: ["completed", "retired"] }
     ],
     actions: [
       { label: "Start Claim", icon: Plus, variant: "default" }

@@ -5,20 +5,27 @@ import { z } from "zod";
 
 // State Machine Enums
 export const LotStatus = {
-  DRAFT: "DRAFT",
-  LISTED: "LISTED", 
-  ESCROWED: "ESCROWED",
-  DELIVERED: "DELIVERED",
-  SETTLED: "SETTLED",
-  RETIRED: "RETIRED"
+  DRAFT: "draft",
+  PENDING_VERIFICATION: "pending_verification",
+  VERIFIED: "verified",
+  LISTED: "listed",
+  PARTIALLY_SOLD: "partially_sold",
+  SOLD_OUT: "sold_out",
+  RETIRED: "retired",
+  CANCELLED: "cancelled",
+  EXPIRED: "expired"
 };
 
 export const OrderStatus = {
-  CREATED: "CREATED",
-  ESCROWED: "ESCROWED",
-  DELIVERED: "DELIVERED", 
-  SETTLED: "SETTLED",
-  CANCELLED: "CANCELLED"
+  PENDING: "pending",
+  CONFIRMED: "confirmed",
+  PROCESSING: "processing",
+  ESCROW: "escrow",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+  FAILED: "failed",
+  REFUNDED: "refunded",
+  DISPUTED: "disputed"
 };
 
 export const ClaimStatus = {
@@ -68,33 +75,37 @@ export const projectValidationSchema = z.object({
 
 // Guard functions
 export const canTransitionLotStatus = (from, to, hasValidUploads = false, isRetired = false) => {
-  switch (from) {
-    case LotStatus.DRAFT:
-      return to === LotStatus.LISTED && hasValidUploads;
-    case LotStatus.LISTED:
-      return to === LotStatus.ESCROWED;
-    case LotStatus.ESCROWED:
-      return to === LotStatus.DELIVERED;
-    case LotStatus.DELIVERED:
-      return to === LotStatus.SETTLED;
-    case LotStatus.SETTLED:
-      return to === LotStatus.RETIRED && isRetired;
-    default:
-      return false;
-  }
+  const transitions = {
+    [LotStatus.DRAFT]: [LotStatus.PENDING_VERIFICATION, LotStatus.CANCELLED],
+    [LotStatus.PENDING_VERIFICATION]: [LotStatus.VERIFIED, LotStatus.CANCELLED],
+    [LotStatus.VERIFIED]: [LotStatus.LISTED, LotStatus.CANCELLED],
+    [LotStatus.LISTED]: [LotStatus.PARTIALLY_SOLD, LotStatus.SOLD_OUT, LotStatus.EXPIRED, LotStatus.CANCELLED],
+    [LotStatus.PARTIALLY_SOLD]: [LotStatus.SOLD_OUT, LotStatus.EXPIRED, LotStatus.CANCELLED],
+    [LotStatus.SOLD_OUT]: [LotStatus.RETIRED],
+    [LotStatus.RETIRED]: [],
+    [LotStatus.CANCELLED]: [],
+    [LotStatus.EXPIRED]: [LotStatus.CANCELLED]
+  };
+  
+  const allowedTransitions = transitions[from] || [];
+  return allowedTransitions.includes(to);
 };
 
 export const canTransitionOrderStatus = (from, to, hasDeliveryRef = false, hasPayoutTx = false) => {
-  switch (from) {
-    case OrderStatus.CREATED:
-      return to === OrderStatus.ESCROWED;
-    case OrderStatus.ESCROWED:
-      return to === OrderStatus.DELIVERED && hasDeliveryRef;
-    case OrderStatus.DELIVERED:
-      return to === OrderStatus.SETTLED && hasPayoutTx;
-    default:
-      return to === OrderStatus.CANCELLED;
-  }
+  const transitions = {
+    [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED, OrderStatus.FAILED],
+    [OrderStatus.CONFIRMED]: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
+    [OrderStatus.PROCESSING]: [OrderStatus.ESCROW, OrderStatus.COMPLETED, OrderStatus.FAILED],
+    [OrderStatus.ESCROW]: [OrderStatus.COMPLETED, OrderStatus.DISPUTED, OrderStatus.REFUNDED],
+    [OrderStatus.COMPLETED]: [],
+    [OrderStatus.CANCELLED]: [],
+    [OrderStatus.FAILED]: [OrderStatus.REFUNDED],
+    [OrderStatus.REFUNDED]: [],
+    [OrderStatus.DISPUTED]: [OrderStatus.COMPLETED, OrderStatus.REFUNDED]
+  };
+  
+  const allowedTransitions = transitions[from] || [];
+  return allowedTransitions.includes(to);
 };
 
 export const canTransitionClaimStatus = (from, to) => {
@@ -172,7 +183,7 @@ export const carbonLots = pgTable("carbon_lots", {
   pricePerTon: decimal("price_per_ton", { precision: 8, scale: 2 }).notNull(),
   totalTons: decimal("total_tons", { precision: 10, scale: 2 }).notNull(),
   availableTons: decimal("available_tons", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("DRAFT"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
   developerId: varchar("developer_id", { length: 255 }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -189,7 +200,7 @@ export const orders = pgTable("orders", {
   platformFee: decimal("platform_fee", { precision: 12, scale: 2 }).notNull(),
   retirementFee: decimal("retirement_fee", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("CREATED"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
   escrowTxHash: varchar("escrow_tx_hash", { length: 255 }),
   deliveryRef: varchar("delivery_ref", { length: 255 }),
   payoutTxHash: varchar("payout_tx_hash", { length: 255 }),
@@ -246,6 +257,55 @@ export const auditLog = pgTable("audit_log", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
+// Investor Pool aggregate table
+export const investorPools = pgTable("investor_pools", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  tvl: decimal("tvl", { precision: 18, scale: 2 }).default("0").notNull(),
+  totalShares: decimal("total_shares", { precision: 18, scale: 8 }).default("0").notNull(),
+  sharePrice: decimal("share_price", { precision: 12, scale: 6 }).default("1").notNull(),
+  apr: decimal("apr", { precision: 6, scale: 4 }).default("0.1000").notNull(),
+  totalDeposits: decimal("total_deposits", { precision: 18, scale: 2 }).default("0").notNull(),
+  totalWithdrawals: decimal("total_withdrawals", { precision: 18, scale: 2 }).default("0").notNull(),
+  lastSettlementAt: timestamp("last_settlement_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Investor Accounts table
+export const investorAccounts = pgTable("investor_accounts", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  shares: decimal("shares", { precision: 18, scale: 8 }).default("0").notNull(),
+  depositTotal: decimal("deposit_total", { precision: 18, scale: 2 }).default("0").notNull(),
+  withdrawTotal: decimal("withdraw_total", { precision: 18, scale: 2 }).default("0").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Investor Flows table
+export const investorFlows = pgTable("investor_flows", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  userId: varchar("user_id", { length: 255 }),
+  type: varchar("type", { length: 40 }).notNull(), // DEPOSIT | WITHDRAW | CREDIT_FROM_SETTLEMENT | FEE
+  amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
+  sharesDelta: decimal("shares_delta", { precision: 18, scale: 8 }).default("0").notNull(),
+  orderId: varchar("order_id", { length: 255 }),
+  txHash: varchar("tx_hash", { length: 255 }),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Payout Splits per order
+export const payoutSplits = pgTable("payout_splits", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  orderId: varchar("order_id", { length: 255 }).notNull(),
+  developerAmount: decimal("developer_amount", { precision: 18, scale: 2 }).notNull(),
+  investorAmount: decimal("investor_amount", { precision: 18, scale: 2 }).notNull(),
+  platformFee: decimal("platform_fee", { precision: 18, scale: 2 }).notNull(),
+  txHash: varchar("tx_hash", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Project Sheets table
 export const projectSheets = pgTable("project_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -265,6 +325,24 @@ export const projectSheets = pgTable("project_sheets", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+// HCS Events table for Mirror Node audit trail
+export const hcsEvents = pgTable("hcs_events", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  topicId: varchar("topic_id", { length: 255 }).notNull(),
+  sequenceNumber: varchar("sequence_number", { length: 255 }).notNull(),
+  consensusTimestamp: varchar("consensus_timestamp", { length: 255 }).notNull(),
+  runningHash: varchar("running_hash", { length: 255 }).notNull(),
+  messageContent: text("message_content").notNull(),
+  parsedMessage: jsonb("parsed_message").default({}),
+  topicName: varchar("topic_name", { length: 100 }),
+  confirmed: boolean("confirmed").default(false),
+  hcsEventId: varchar("hcs_event_id", { length: 255 }),
+  lastHcsEventId: varchar("last_hcs_event_id", { length: 255 }),
+  lastConsensusTimestamp: varchar("last_consensus_timestamp", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertProjectSchema = createInsertSchema(projects);
 export const insertCarbonLotSchema = createInsertSchema(carbonLots);
@@ -273,6 +351,11 @@ export const insertProofSchema = createInsertSchema(proofs);
 export const insertClaimSchema = createInsertSchema(claims);
 export const insertAnalyticsSchema = createInsertSchema(analytics);
 export const insertAuditLogSchema = createInsertSchema(auditLog);
+export const insertInvestorPoolSchema = createInsertSchema(investorPools);
+export const insertInvestorAccountSchema = createInsertSchema(investorAccounts);
+export const insertInvestorFlowSchema = createInsertSchema(investorFlows);
+export const insertPayoutSplitSchema = createInsertSchema(payoutSplits);
+export const insertHcsEventSchema = createInsertSchema(hcsEvents);
 
 // ProofLink utility class
 export class ProofLink {
@@ -291,6 +374,11 @@ export class ProofLink {
   
   static buildTokenLink(tokenId) {
     return `https://hashscan.io/testnet/token/${tokenId}`;
+  }
+  
+  // Alias for compatibility
+  static buildTransactionLink(txHash) {
+    return this.buildTxLink(txHash);
   }
 }
 
@@ -377,24 +465,20 @@ export function calculateTieredFees(amount, userTier = 'standard') {
 export function calculatePayoutSplit(totalAmount, stakeholders = {}) {
   const {
     projectDeveloper = 0.70,  // 70% to project developer
-    platform = 0.15,         // 15% to platform
-    verifier = 0.08,         // 8% to verifier
-    registry = 0.05,         // 5% to registry
-    insurance = 0.02         // 2% to insurance fund
+    investorPool = 0.20,      // 20% to investor pool
+    platform = 0.10           // 10% to platform
   } = stakeholders;
   
   // Ensure percentages add up to 100%
-  const totalPercentage = projectDeveloper + platform + verifier + registry + insurance;
+  const totalPercentage = projectDeveloper + investorPool + platform;
   if (Math.abs(totalPercentage - 1.0) > 0.001) {
     throw new Error(`Payout percentages must sum to 100%, got ${totalPercentage * 100}%`);
   }
   
   const payouts = {
     projectDeveloper: Math.round(totalAmount * projectDeveloper * 100) / 100,
-    platform: Math.round(totalAmount * platform * 100) / 100,
-    verifier: Math.round(totalAmount * verifier * 100) / 100,
-    registry: Math.round(totalAmount * registry * 100) / 100,
-    insurance: Math.round(totalAmount * insurance * 100) / 100
+    investorPool: Math.round(totalAmount * investorPool * 100) / 100,
+    platform: Math.round(totalAmount * platform * 100) / 100
   };
   
   // Adjust for rounding errors
@@ -408,7 +492,7 @@ export function calculatePayoutSplit(totalAmount, stakeholders = {}) {
   return {
     totalAmount,
     payouts,
-    percentages: { projectDeveloper, platform, verifier, registry, insurance },
+    percentages: { projectDeveloper, investorPool, platform },
     verification: {
       totalPayout: Object.values(payouts).reduce((sum, amount) => sum + amount, 0),
       difference: totalAmount - Object.values(payouts).reduce((sum, amount) => sum + amount, 0)

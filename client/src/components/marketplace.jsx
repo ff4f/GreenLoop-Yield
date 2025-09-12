@@ -27,10 +27,10 @@ export default function Marketplace() {
   const { data: resp, isLoading, error } = useQuery({ queryKey: ["/api", "lots"] });
   const lots = Array.isArray(resp?.data) ? resp.data : [];
 
-  const statusMap = {
-    AVAILABLE: ["LISTED"],
-    RESERVED: ["ESCROWED"],
-    SOLD: ["SETTLED", "RETIRED", "SOLD_OUT"],
+  const LOT_STATUS_GROUPS = {
+    AVAILABLE: ["listed"],
+    RESERVED: ["partially_sold"],
+    SOLD: ["sold_out", "retired"],
   };
 
   // Filter lots based on search and filter criteria
@@ -60,7 +60,7 @@ export default function Marketplace() {
         if (!isSame) return l;
         const current = Number(l.availableTons ?? l.listedTons ?? 0);
         const remaining = Math.max(current - Number(qty || 0), 0);
-        const nextStatus = remaining === 0 ? "ESCROWED" : l.status;
+        const nextStatus = remaining === 0 ? "sold_out" : "partially_sold";
         const updated = { ...l, status: nextStatus };
         if (Object.prototype.hasOwnProperty.call(l, "availableTons")) {
           updated.availableTons = remaining;
@@ -80,7 +80,7 @@ export default function Marketplace() {
       tons: Number(qty || 0),
       pricePerTon: Number(lotRef.pricePerTon || 0),
       totalAmount: Number(qty || 0) * Number(lotRef.pricePerTon || 0),
-      status: "ESCROWED",
+      status: "escrow",
       yieldStrategy: lotRef.yieldType === 'staking' ? 'staking_only' : 'carbon_appreciation',
       yieldEarned: 0,
       currentValue: Number(qty || 0) * Number(lotRef.pricePerTon || 0),

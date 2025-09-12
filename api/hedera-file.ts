@@ -1,7 +1,14 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { ProofLink } from '../shared/schema.js';
+// @ts-ignore
+import { MOCK_IDS, ProofLink } from '../shared/schema.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper functions
 function generateId(prefix: string): string {
@@ -62,10 +69,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2500);
-          
-          // Upload file
-          const file = await HederaMockService.file.uploadFile(
+          await HederaService.simulateNetworkDelay(2500);
+      
+      // Upload file
+      const file = await HederaService.file.uploadFile(
             fileContent,
             contentType || 'application/octet-stream'
           );
@@ -146,10 +153,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const fileSizeBytes = Buffer.byteLength(proofContent, 'utf8');
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(3000);
-          
-          // Upload proof file
-          const file = await HederaMockService.file.uploadFile(
+          await HederaService.simulateNetworkDelay(3000);
+      
+      // Upload large file
+      const file = await HederaService.file.uploadFile(
             proofContent,
             'application/json'
           );
@@ -225,10 +232,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
-          
-          // Get file
-          const file = await HederaMockService.file.getFile(fileId);
+          await HederaService.simulateNetworkDelay(1500);
+      
+      // Get file
+      const file = await HederaService.file.getFile(fileId);
           
           if (!file) {
             return res.status(404).json({ 
@@ -270,10 +277,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1000);
-          
-          // Get file info
-          const fileInfo = await HederaMockService.file.getFileInfo(fileId);
+          await HederaService.simulateNetworkDelay(1000);
+      
+      // Get file info
+      const fileInfo = await HederaService.file.getFileInfo(fileId);
           
           if (!fileInfo) {
             return res.status(404).json({ 
@@ -324,10 +331,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2000);
-          
-          // Update file
-          const updatedFile = await HederaMockService.file.updateFile(
+          await HederaService.simulateNetworkDelay(2000);
+      
+      // Update file
+      const updatedFile = await HederaService.file.updateFile(
             fileId,
             fileContent,
             contentType || 'application/octet-stream'
@@ -393,10 +400,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
-          
-          // Delete file
-          const deletion = await HederaMockService.file.deleteFile(fileId);
+          await HederaService.simulateNetworkDelay(1500);
+      
+      // Delete file
+      const deletion = await HederaService.file.deleteFile(fileId);
           
           // Log analytics and audit
           logAnalytics('file_deleted', 1, { fileId, userId });

@@ -1,7 +1,14 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { ProofLink } from '../shared/schema.js';
+// @ts-ignore
+import { MOCK_IDS, ProofLink } from '../shared/schema.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper functions
 function generateId(prefix: string): string {
@@ -50,10 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2000);
-          
-          // Create topic
-          const topic = await HederaMockService.consensus.createTopic(
+          await HederaService.simulateNetworkDelay(2000);
+      
+      // Create topic
+      const topic = await HederaService.consensus.createTopic(
             topicMemo,
             submitKey || null
           );
@@ -113,10 +120,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
-          
-          // Submit message
-          const submission = await HederaMockService.consensus.submitMessage(
+          await HederaService.simulateNetworkDelay(1500);
+      
+      // Submit message
+      const submission = await HederaService.consensus.submitMessage(
             topicId,
             JSON.stringify(message)
           );
@@ -178,10 +185,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1000);
-          
-          // Get messages
-          const messages = await HederaMockService.consensus.getTopicMessages(
+          await HederaService.simulateNetworkDelay(1000);
+      
+      // Get messages
+      const messages = await HederaService.consensus.getMessages(
             topicId,
             limit
           );

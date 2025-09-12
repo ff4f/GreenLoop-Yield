@@ -133,12 +133,18 @@ const OrdersTable = ({ orders = [] }) => {
 
   const getStatusBadge = (status) => {
     const variants = {
-      'ESCROWED': { variant: 'secondary', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-      'DELIVERED': { variant: 'secondary', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-      'SETTLED': { variant: 'secondary', className: 'bg-green-100 text-green-800 border-green-200' }
+      'pending': { variant: 'secondary', className: 'bg-gray-100 text-gray-800 border-gray-200' },
+    'confirmed': { variant: 'secondary', className: 'bg-blue-100 text-blue-800 border-blue-200' },
+    'processing': { variant: 'secondary', className: 'bg-purple-100 text-purple-800 border-purple-200' },
+    'escrow': { variant: 'secondary', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+    'completed': { variant: 'secondary', className: 'bg-green-100 text-green-800 border-green-200' },
+    'cancelled': { variant: 'secondary', className: 'bg-red-100 text-red-800 border-red-200' },
+    'failed': { variant: 'secondary', className: 'bg-red-100 text-red-800 border-red-200' },
+    'refunded': { variant: 'secondary', className: 'bg-orange-100 text-orange-800 border-orange-200' },
+    'disputed': { variant: 'secondary', className: 'bg-pink-100 text-pink-800 border-pink-200' }
     };
     
-    const config = variants[status] || variants['ESCROWED'];
+    const config = variants[status] || variants['pending'];
     
     return (
       <Badge variant={config.variant} className={`text-xs font-medium ${config.className}`}>
@@ -150,22 +156,28 @@ const OrdersTable = ({ orders = [] }) => {
   const getTimelineSteps = (order) => {
     const steps = [
       {
-        label: 'Escrowed',
-        completed: true,
+        label: 'Pending',
+        completed: order.status !== 'pending',
         hash: order.escrowTxHash,
-        timestamp: '2025-01-20 14:30:00'
+        timestamp: order.status !== 'pending' ? '2025-01-21 08:00:00' : null
       },
       {
-        label: 'Delivered',
-        completed: order.status === 'DELIVERED' || order.status === 'SETTLED',
-        hash: order.deliveryTxHash,
-        timestamp: order.status === 'DELIVERED' || order.status === 'SETTLED' ? '2025-01-21 09:15:00' : null
+        label: 'Confirmed',
+        completed: ['confirmed', 'processing', 'escrow', 'completed'].includes(order.status),
+        hash: order.escrowTxHash,
+        timestamp: ['confirmed', 'processing', 'escrow', 'completed'].includes(order.status) ? '2025-01-21 08:15:00' : null
       },
       {
-        label: 'Settled',
-        completed: order.status === 'SETTLED',
+        label: 'In Escrow',
+        completed: ['escrow', 'completed'].includes(order.status),
+        hash: order.escrowTxHash,
+        timestamp: ['escrow', 'completed'].includes(order.status) ? '2025-01-21 08:30:00' : null
+      },
+      {
+        label: 'Completed',
+        completed: order.status === 'completed',
         hash: order.payoutTxHash,
-        timestamp: order.status === 'SETTLED' ? '2025-01-21 16:45:00' : null
+        timestamp: order.status === 'completed' ? '2025-01-21 16:45:00' : null
       }
     ];
     
@@ -235,7 +247,7 @@ const OrdersTable = ({ orders = [] }) => {
                   )}
                 </TableCell>
                 <TableCell className="text-xs py-2">
-                  {order.status === 'ESCROWED' && (
+                  {order.status === 'escrow' && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -250,7 +262,7 @@ const OrdersTable = ({ orders = [] }) => {
                       Mark Delivered
                     </Button>
                   )}
-                  {order.status === 'DELIVERED' && (
+                  {order.status === 'completed' && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -349,7 +361,7 @@ const OrdersTable = ({ orders = [] }) => {
 
               {/* Actions */}
               <div className="space-y-2">
-                {selectedOrder.status === 'ESCROWED' && (
+                {selectedOrder.status === 'escrow' && (
                   <Button
                     onClick={() => handleMarkDelivered(selectedOrder.orderId)}
                     className="w-full h-9 text-sm rounded-xl bg-blue-500 hover:bg-blue-600 text-white"
@@ -358,7 +370,7 @@ const OrdersTable = ({ orders = [] }) => {
                     Mark as Delivered
                   </Button>
                 )}
-                {selectedOrder.status === 'DELIVERED' && (
+                {selectedOrder.status === 'completed' && (
                   <Button
                     onClick={() => handleReleaseEscrow(selectedOrder.orderId)}
                     className="w-full h-9 text-sm rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white"

@@ -15,6 +15,8 @@ import Orders from "@/components/orders";
 import ProjectSheets from "@/components/project-sheets";
 import ProofFeed from "@/components/proof-feed";
 import ClaimsHelper from "@/components/claims-helper";
+import ProofTray from "@/components/proof-tray";
+import GeoJSONMap from "@/components/geojson-map";
 
 
 // Mock Hedera IDs generator
@@ -43,6 +45,8 @@ function DashboardContent() {
     { value: "marketplace", label: "Marketplace", icon: null },
     { value: "orders", label: "Orders", icon: null },
     { value: "proof-feed", label: "Proof Feed", icon: null },
+    { value: "proof-tray", label: "Proof Tray", icon: null },
+    { value: "map-view", label: "Map View", icon: null },
     { value: "claims-helper", label: "Claims Helper", icon: null }
   ];
 
@@ -99,6 +103,24 @@ function DashboardContent() {
           label: 'Proof Submitted',
           meta: { action: 'submitted to HCS', sequence: Math.floor(Math.random() * 1000) },
           source: 'Proof Feed'
+        });
+        break;
+      case 'proof-tray':
+        addEvidence({
+          kind: 'file',
+          id: generateMockHederaId('file'),
+          label: 'Proof Document Uploaded',
+          meta: { action: 'uploaded to proof tray', type: 'verification-document' },
+          source: 'Proof Tray'
+        });
+        break;
+      case 'map-view':
+        addEvidence({
+          kind: 'topic',
+          id: generateMockHederaId('topic'),
+          label: 'Project Location Viewed',
+          meta: { action: 'map interaction', type: 'geospatial-data' },
+          source: 'Map View'
         });
         break;
       case 'claims-helper':
@@ -162,6 +184,24 @@ function DashboardContent() {
               onPrimaryAction={() => handlePrimaryAction('proof-feed')}
             />
             <ProofFeed />
+          </TabsContent>
+
+          {/* Proof Tray Tab */}
+          <TabsContent value="proof-tray" className="space-y-6">
+            <SubheaderStrip 
+              activeTab={activeTab} 
+              onPrimaryAction={() => handlePrimaryAction('proof-tray')}
+            />
+            <ProofTray />
+          </TabsContent>
+
+          {/* Map View Tab */}
+          <TabsContent value="map-view" className="space-y-6">
+            <SubheaderStrip 
+              activeTab={activeTab} 
+              onPrimaryAction={() => handlePrimaryAction('map-view')}
+            />
+            <GeoJSONMap />
           </TabsContent>
 
           {/* Claims Helper Tab */}

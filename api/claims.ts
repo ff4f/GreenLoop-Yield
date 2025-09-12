@@ -1,7 +1,15 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+// @ts-ignore
 import { db, QueryHelpers } from '../shared/database.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+// @ts-ignore
 import { ClaimStatus, UserRole, buildProofLink } from '../shared/schema.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper functions
 function generateId(): string {
@@ -28,7 +36,7 @@ async function logAudit(action: string, entityType: string, entityId: string, us
 }
 
 // Claims Helper 8-Step Process Functions
-async function validateClaim(claimData: any, hederaService: HederaMockService) {
+async function validateClaim(claimData: any, hederaService: any) {
   // Step 1: Validate claim data and requirements
   const validationResults = {
     orderId: !!claimData.orderId,
@@ -58,7 +66,7 @@ async function validateClaim(claimData: any, hederaService: HederaMockService) {
   };
 }
 
-async function generatePDF(claimData: any, hederaService: HederaMockService) {
+async function generatePDF(claimData: any, hederaService: any) {
   // Step 2: Generate PDF certificate
   const pdfContent = {
     title: 'Carbon Credit Retirement Certificate',
@@ -84,7 +92,7 @@ async function generatePDF(claimData: any, hederaService: HederaMockService) {
   };
 }
 
-async function generateJSON(claimData: any, hederaService: HederaMockService) {
+async function generateJSON(claimData: any, hederaService: any) {
   // Step 3: Generate JSON metadata
   const jsonMetadata = {
     '@context': 'https://schema.org/ClimateAction',
@@ -115,7 +123,7 @@ async function generateJSON(claimData: any, hederaService: HederaMockService) {
   };
 }
 
-async function anchorToHedera(claimData: any, pdfFileId: string, jsonFileId: string, hederaService: HederaMockService) {
+async function anchorToHedera(claimData: any, pdfFileId: string, jsonFileId: string, hederaService: any) {
   // Step 4: Anchor claim to Hedera network
   const anchorData = {
     type: 'CLAIM_ANCHORED',
@@ -150,7 +158,7 @@ async function anchorToHedera(claimData: any, pdfFileId: string, jsonFileId: str
   };
 }
 
-async function generateBadge(claimData: any, hederaService: HederaMockService) {
+async function generateBadge(claimData: any, hederaService: any) {
   // Step 5: Generate NFT badge
   const badgeMetadata = {
     name: `Carbon Credit Retirement Badge #${claimData.id}`,
@@ -180,7 +188,7 @@ async function generateBadge(claimData: any, hederaService: HederaMockService) {
   };
 }
 
-async function completeClaim(claimData: any, stepResults: any, hederaService: HederaMockService) {
+async function completeClaim(claimData: any, stepResults: any, hederaService: any) {
   // Step 6: Complete claim and update status
   const completionData = {
     type: 'CLAIM_COMPLETED',
@@ -333,7 +341,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         try {
-          const hederaService = new HederaMockService();
+          const hederaService = HederaService;
           let stepResult;
           let nextStep = claim.currentStep;
           let newStatus = claim.status;
@@ -434,13 +442,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               type: 'success',
               title: `Step ${claim.currentStep} Completed`,
               message: `${action.replace('_', ' ')} completed successfully`,
-              links: stepResult.downloadUrl || stepResult.badgeUrl || stepResult.anchorUrl ? {
-                primary: stepResult.downloadUrl || stepResult.badgeUrl || stepResult.anchorUrl
+              links: (stepResult as any).downloadUrl || (stepResult as any).badgeUrl || (stepResult as any).anchorUrl ? {
+                primary: (stepResult as any).downloadUrl || (stepResult as any).badgeUrl || (stepResult as any).anchorUrl
               } : undefined
             }
           });
 
-        } catch (stepError) {
+        } catch (stepError: any) {
           console.error(`Claim step ${action} failed:`, stepError);
           
           // Log failed step
@@ -529,7 +537,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           error: `Method ${method} not allowed`
         });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Claims API error:', error);
     return res.status(500).json({
       success: false,

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+// @ts-ignore
 import { 
   LotStatus, 
   canTransitionLotStatus,
@@ -6,13 +7,25 @@ import {
   ProofLink,
   MOCK_IDS
 } from '../shared/seed-data.js';
+// @ts-ignore
 import { db, QueryHelpers } from '../shared/database.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+// @ts-ignore
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth-guard.js';
+// @ts-ignore
+import { PERMISSIONS, USER_ROLES } from '../shared/guards.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper function to generate unique IDs
 const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 // Helper function to log analytics
+// @ts-ignore
 const logAnalytics = async (metric: string, value: number, metadata: any = {}) => {
   await QueryHelpers.createAnalytics({
     event: metric,
@@ -23,6 +36,7 @@ const logAnalytics = async (metric: string, value: number, metadata: any = {}) =
 };
 
 // Helper function to log audit trail
+// @ts-ignore
 const logAudit = async (userId: string, action: string, entityType: string, entityId: string, changes: any) => {
   await QueryHelpers.createAuditLog({
     userId,
@@ -45,6 +59,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Authentication check for all methods except GET (public marketplace)
+  if (method !== 'GET') {
+    const authResult = await requireAuth(req);
+    if (authResult.error) {
+      return res.status(401).json({ error: authResult.error });
+    }
   }
 
   try {
@@ -91,8 +113,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             data: filteredLots,
             meta: {
               total: filteredLots.length,
-              listed: filteredLots.filter(l => l.status === LotStatus.LISTED).length,
-              escrowed: filteredLots.filter(l => l.status === LotStatus.ESCROWED).length
+              draft: filteredLots.filter((l: any) => l.status === LotStatus.DRAFT).length,
+            pending_verification: filteredLots.filter((l: any) => l.status === LotStatus.PENDING_VERIFICATION).length,
+            verified: filteredLots.filter((l: any) => l.status === LotStatus.VERIFIED).length,
+            listed: filteredLots.filter((l: any) => l.status === LotStatus.LISTED).length,
+            partially_sold: filteredLots.filter((l: any) => l.status === LotStatus.PARTIALLY_SOLD).length,
+            sold_out: filteredLots.filter((l: any) => l.status === LotStatus.SOLD_OUT).length,
+            retired: filteredLots.filter((l: any) => l.status === LotStatus.RETIRED).length
             },
             proofLinks: {
               addProof: `/app#proof-feed`,
@@ -103,6 +130,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case 'POST':
         if (action === 'generate') {
+          // Check permission for lot generation
+          const permissionResult = await requirePermission(req, PERMISSIONS.CREATE_LOT);
+          if (permissionResult.error) {
+            return res.status(403).json({ error: permissionResult.error });
+          }
+          
           // Generate Lot action from Project Sheets
           const { projectData, userId } = req.body;
           
@@ -143,23 +176,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             : projectData.units * projectData.rate;
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
+          await HederaService.simulateNetworkDelay(1500);
           
           // Create fungible token for carbon credits
-          const token = await HederaMockService.token.createFungibleToken(
+          const token = await HederaService.token.createFungibleToken(
             `${projectData.projectName} Carbon Credits`,
             'CCT',
             totalTons
           );
           
           // Upload project files to HFS
-          const projectFile = await HederaMockService.file.uploadFile(
+          const projectFile = await HederaService.file.uploadFile(
             JSON.stringify(projectData),
             'application/json'
           );
           
           // Log to HCS
-          const hcsLog = await HederaMockService.consensus.submitMessage(
+          const hcsLog = await HederaService.consensus.submitMessage(
             MOCK_IDS.HCS_TOPICS.PROOF,
             JSON.stringify({
               action: 'lot_generated',
@@ -237,6 +270,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           });
         } else {
+          // Check permission for lot creation
+          const permissionResult = await requirePermission(req, PERMISSIONS.CREATE_LOT);
+          if (permissionResult.error) {
+            return res.status(403).json({ error: permissionResult.error });
+          }
+          
           // Create new lot (standard CRUD)
           const lotData = req.body;
           const newLotData = {
@@ -256,6 +295,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
       case 'PUT':
+        // Check permission for lot updates
+        const updatePermissionResult = await requirePermission(req, PERMISSIONS.UPDATE_LOT);
+        if (updatePermissionResult.error) {
+          return res.status(403).json({ error: updatePermissionResult.error });
+        }
+        
         if (!lotId) {
           return res.status(400).json({ error: 'Lot ID is required' });
         }
@@ -287,7 +332,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Additional validation for DRAFT -> LISTED
-          if (existingLot.status === LotStatus.DRAFT && newStatus === LotStatus.LISTED) {
+          if (existingLot.status === LotStatus.VERIFIED && newStatus === LotStatus.LISTED) {
             if (!hasValidUploads) {
               return res.status(400).json({ 
                 error: 'Valid uploads required to list lot',
@@ -346,6 +391,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
       case 'DELETE':
+        // Check permission for lot deletion
+        const deletePermissionResult = await requirePermission(req, PERMISSIONS.DELETE_LOT);
+        if (deletePermissionResult.error) {
+          return res.status(403).json({ error: deletePermissionResult.error });
+        }
+        
         if (!lotId) {
           return res.status(400).json({ error: 'Lot ID is required' });
         }

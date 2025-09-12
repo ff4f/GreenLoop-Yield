@@ -2,11 +2,12 @@ import { useState } from "react";
 import { SEED_PROJECTS } from '@shared/seed-data.js';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Plus, Filter } from "lucide-react";
 import { useWallet } from "@/hooks/use-wallet";
 import FormNewProject from "./form-new-project";
 import RealtimeCalc from "./realtime-calc";
 import Tips from "./tips";
+import PDIFilter from "./pdi-filter";
 
 export default function ProjectSheets() {
   const { isConnected, isConnecting, connect } = useWallet();
@@ -26,8 +27,15 @@ export default function ProjectSheets() {
     status: "All Status"
   });
 
+  const [filteredProjects, setFilteredProjects] = useState(SEED_PROJECTS);
+  const [showPDIFilter, setShowPDIFilter] = useState(false);
+
   const handleFilterChange = (filterType, value) => {
     setFilters(prev => ({ ...prev, [filterType]: value }));
+  };
+
+  const handlePDIFilterChange = (filtered, pdiFilters) => {
+    setFilteredProjects(filtered);
   };
 
   const handleNewProject = () => {
@@ -68,6 +76,14 @@ export default function ProjectSheets() {
                   </SelectContent>
                 </Select>
                 <Button 
+                  onClick={() => setShowPDIFilter(!showPDIFilter)}
+                  className="h-9 text-sm rounded-xl border-white/10 bg-white/5 focus:ring-emerald-400/40 flex items-center gap-2"
+                  variant="outline"
+                >
+                  <Filter className="w-4 h-4" />
+                  PDI Filter
+                </Button>
+                <Button 
                   onClick={handleNewProject}
                   className="h-9 text-sm rounded-xl border-white/10 bg-white/5 focus:ring-emerald-400/40 flex items-center gap-2"
                   variant="outline"
@@ -94,6 +110,17 @@ export default function ProjectSheets() {
               </Button>
             </div>
           )}
+          
+          {/* PDI Filter Section */}
+          {showPDIFilter && (
+            <div className="border-t border-white/10 p-5 sm:p-6">
+              <PDIFilter 
+                projects={SEED_PROJECTS} 
+                onFilterChange={handlePDIFilterChange}
+              />
+            </div>
+          )}
+          
           <div className="p-5 sm:p-6">
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-w-0">
               {/* Left inner: New Project Form */}

@@ -145,13 +145,22 @@ export const UI_LABELS = {
   },
   STATUS: {
     DRAFT: "Draft",
-    PENDING: "Pending",
-    VALIDATED: "Validated",
+    PENDING_VERIFICATION: "Pending Verification",
+    VERIFIED: "Verified",
     LISTED: "Listed",
-    SOLD: "Sold",
-    DELIVERED: "Delivered",
-    SETTLED: "Settled",
-    CANCELLED: "Cancelled"
+    PARTIALLY_SOLD: "Partially Sold",
+    SOLD_OUT: "Sold Out",
+    RETIRED: "Retired",
+    CANCELLED: "Cancelled",
+    EXPIRED: "Expired",
+    PENDING: "Pending",
+    CONFIRMED: "Confirmed",
+    PROCESSING: "Processing",
+    ESCROW: "In Escrow",
+    COMPLETED: "Completed",
+    FAILED: "Failed",
+    REFUNDED: "Refunded",
+    DISPUTED: "Disputed"
   }
 };
 

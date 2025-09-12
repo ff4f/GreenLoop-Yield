@@ -1,7 +1,18 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
 import { ProofType, UserRole, buildProofLink } from '../shared/schema.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
+// @ts-ignore
 import { db, QueryHelpers } from '../shared/database.js';
+// @ts-ignore
+import formidable from 'formidable';
+import fs from 'fs/promises';
 
 // Helper functions
 function generateId(): string {
@@ -45,17 +56,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let filteredProofs = await QueryHelpers.getProofs();
 
         if (lotId) {
-          filteredProofs = filteredProofs.filter(p => p.lotId === lotId);
+          filteredProofs = filteredProofs.filter((p: any) => p.lotId === lotId);
         }
         if (projectId) {
-          filteredProofs = filteredProofs.filter(p => p.projectId === projectId);
+          filteredProofs = filteredProofs.filter((p: any) => p.projectId === projectId);
         }
         if (type) {
-          filteredProofs = filteredProofs.filter(p => p.type === type);
+          filteredProofs = filteredProofs.filter((p: any) => p.type === type);
         }
 
         // Sort by timestamp descending (timeline order)
-        filteredProofs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        filteredProofs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         
         // Apply limit
         filteredProofs = filteredProofs.slice(0, parseInt(limit as string));
@@ -77,8 +88,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
 
       case 'POST':
-        // Add new proof
-        const { lotId: newLotId, projectId: newProjectId, type: proofType, title, description, file } = body;
+        // Handle multipart form data for file uploads
+        let formData;
+        let uploadedFile = null;
+        
+        if (req.headers['content-type']?.includes('multipart/form-data')) {
+          const form = formidable({
+            maxFileSize: 10 * 1024 * 1024, // 10MB limit
+            allowEmptyFiles: false,
+            filter: ({ mimetype }: any) => {
+               return mimetype && (
+                 mimetype.includes('image/') ||
+                 mimetype.includes('application/pdf') ||
+                 mimetype.includes('application/json')
+               );
+             }
+          });
+          
+          const [fields, files] = await form.parse(req);
+          formData = {
+            lotId: fields.lotId?.[0],
+            projectId: fields.projectId?.[0],
+            type: fields.type?.[0],
+            title: fields.title?.[0],
+            description: fields.description?.[0]
+          };
+          
+          if (files.file?.[0]) {
+            uploadedFile = files.file[0];
+          }
+        } else {
+          formData = body;
+        }
+        
+        const { lotId: newLotId, projectId: newProjectId, type: proofType, title, description } = formData;
 
         // Validation
         if (!newLotId || !newProjectId || !proofType || !title) {
@@ -104,18 +147,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         try {
-          // Use Hedera Mock Service for file upload and consensus
-          const hederaService = new HederaMockService();
+          // Use real Hedera service or mock based on environment
+          const useRealHedera = process.env.NODE_ENV === 'production' || process.env.USE_REAL_HEDERA === 'true';
+          const hederaService = HederaService;
           
           // Upload file to HFS (if file provided)
           let fileId = null;
-          if (file) {
-            const uploadResult = await hederaService.uploadFile(file, `proof-${proofType}-${Date.now()}`);
-            fileId = uploadResult.fileId;
+          let fileSize = 0;
+          
+          if (uploadedFile) {
+            try {
+              // Read file content
+              const fileContent = await fs.readFile(uploadedFile.filepath);
+              fileSize = fileContent.length;
+              
+              // Upload to Hedera File Service
+              const uploadResult = await hederaService.file.uploadFile(
+                fileContent, 
+                `${proofType}-${title}-${Date.now()}`
+              );
+              
+              fileId = uploadResult.fileId;
+              
+              // Clean up temporary file
+              await fs.unlink(uploadedFile.filepath).catch(() => {});
+            } catch (fileError: any) {
+               console.error('File upload error:', fileError);
+               throw new Error(`Failed to upload file: ${fileError.message}`);
+             }
           }
 
           // Submit to HCS topic
-          const consensusResult = await hederaService.submitMessage({
+          const messageData = {
             type: 'PROOF_ADDED',
             lotId: newLotId,
             projectId: newProjectId,
@@ -123,9 +186,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             title,
             description,
             fileId,
+            fileSize,
             timestamp: new Date().toISOString(),
             submittedBy: userId
-          });
+          };
+          
+          const consensusResult = await hederaService.consensus.submitMessage(
+            'PROOF_TOPIC',
+            JSON.stringify(messageData)
+          );
 
           // Create new proof
           const newProof = {
@@ -181,7 +250,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           });
 
-        } catch (hederaError) {
+        } catch (hederaError: any) {
           console.error('Hedera operation failed:', hederaError);
           return res.status(500).json({
             success: false,
@@ -313,7 +382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           error: `Method ${method} not allowed`
         });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Proof feed API error:', error);
     return res.status(500).json({
       success: false,

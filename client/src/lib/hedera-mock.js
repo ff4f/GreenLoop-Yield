@@ -215,7 +215,7 @@ export const mockCarbonLots = [
     deliveryWindow: "Q1'26",
     bufferPercent: "20",
     forwardPercent: "25",
-    status: "LISTED",
+    status: "listed",
     tokenId: "0.0.600111",
     projectImage: "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300",
     proofHashes: {
@@ -529,7 +529,7 @@ export const mockOrders = [
     quantity: 240,
     pricePerTon: 10,
     totalValue: 2400,
-    status: "DELIVERED",
+    status: "completed",
     progress: 75,
     escrowTxHash: "0x111aaa",
     deliveryTxHash: "0x222bbb",
@@ -543,7 +543,7 @@ export const mockOrders = [
     quantity: 300,
     pricePerTon: 9,
     totalValue: 2700,
-    status: "ESCROWED",
+    status: "escrow",
     progress: 25,
     escrowTxHash: "0x333ccc",
     deliveryTxHash: null,
@@ -557,7 +557,7 @@ export const mockOrders = [
     quantity: 180,
     pricePerTon: 11,
     totalValue: 1980,
-    status: "SETTLED",
+    status: "completed",
     progress: 100,
     escrowTxHash: "0x444ddd",
     deliveryTxHash: "0x555eee",
@@ -657,6 +657,6 @@ export const mockProjectSheets = [
     estimatedValue: 954,
     lotId: "PBCL-WL-GHA-011",
     tokenId: "0.0.600121",
-    status: "DRAFT"
+    status: "draft"
   }
 ];

@@ -1,7 +1,14 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 
-import { ProofLink } from '../shared/schema.js';
+// @ts-ignore
+import { MOCK_IDS, ProofLink } from '../shared/schema.js';
+// @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
+// @ts-ignore
+import { HederaRealService } from '../shared/hedera-real.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Helper functions
 function generateId(prefix: string): string {
@@ -50,10 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(3000);
-          
-          // Create token
-          const token = await HederaMockService.token.createToken(
+          await HederaService.simulateNetworkDelay(3000);
+      
+      // Create token
+      const token = await HederaService.token.createFungibleToken(
             tokenName,
             tokenSymbol,
             decimals || 0,
@@ -123,10 +130,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(2000);
-          
-          // Mint token
-          const mint = await HederaMockService.token.mintToken(
+          await HederaService.simulateNetworkDelay(2000);
+      
+      // Mint tokens
+      const mint = await HederaService.token.mintToken(
             tokenId,
             amount,
             recipientAccountId
@@ -188,10 +195,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1500);
-          
-          // Transfer token
-          const transfer = await HederaMockService.token.transferToken(
+          await HederaService.simulateNetworkDelay(1500);
+      
+      // Transfer tokens
+      const transfer = await HederaService.token.transferToken(
             tokenId,
             amount,
             fromAccountId,
@@ -263,10 +270,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1000);
-          
-          // Get balance
-          const balance = await HederaMockService.token.getTokenBalance(
+          await HederaService.simulateNetworkDelay(1000);
+      
+      // Get token balance
+      const balance = await HederaService.token.getTokenBalance(
             tokenId,
             accountId
           );
@@ -301,10 +308,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           
           // Simulate Hedera operations
-          await HederaMockService.simulateNetworkDelay(1000);
-          
-          // Get token info
-          const tokenInfo = await HederaMockService.token.getTokenInfo(tokenId);
+          await HederaService.simulateNetworkDelay(1000);
+      
+      // Get token info
+      const tokenInfo = await HederaService.token.getTokenInfo(tokenId);
           
           // Log analytics
           logAnalytics('token_info_retrieved', 1, { tokenId });
