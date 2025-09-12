@@ -5,10 +5,29 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Eye, Download, ExternalLink, TrendingUp, Percent, DollarSign, Zap } from 'lucide-react';
 import { useWallet } from '@/hooks/use-wallet';
-import { mockOrders } from "@/lib/hedera-mock";
+import { useQuery } from '@tanstack/react-query';
+import { MOCK_USERS } from '@shared/seed-data.js';
 
 export default function Orders() {
-  const { isConnected, isConnecting, connect } = useWallet();
+  const { isConnected, isConnecting, connect, account } = useWallet();
+  // Map Hedera wallet accountId -> internal buyerId used by SEED_ORDERS
+  const buyerUserId = React.useMemo(() => {
+    const wallet = account?.accountId;
+    if (!wallet) return undefined;
+    const users = Object.values(MOCK_USERS || {});
+    const found = users.find((u) => u?.wallet === wallet);
+    return found?.id;
+  }, [account?.accountId]);
+  
+  // Fetch orders from API (fallback handled in queryClient for /api/orders)
+  const queryKey = buyerUserId
+    ? ["/api", `orders?buyerId=${encodeURIComponent(buyerUserId)}`]
+    : ["/api", "orders"];
+  const { data: resp, isLoading, error } = useQuery({ queryKey });
+  let orders = Array.isArray(resp?.data) ? resp.data : [];
+  if (resp?.isFallback && buyerUserId) {
+    orders = orders.filter((o) => o.buyerId === buyerUserId);
+  }
   
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -102,7 +121,15 @@ export default function Orders() {
                   </TableCell>
                 </TableRow>
               ) : (
-                mockOrders.length === 0 ? (
+                isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-6 text-muted-foreground">Loading orders…</TableCell>
+                  </TableRow>
+                ) : error ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center py-6 text-red-300">Failed to load orders.</TableCell>
+                  </TableRow>
+                ) : orders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center py-16">
                       <div className="mb-6">
@@ -122,7 +149,7 @@ export default function Orders() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                mockOrders.map((order) => {
+                orders.map((order) => {
                 const yieldStrategy = getYieldStrategyBadge(order.yieldStrategy || 'carbon_appreciation');
                 const yieldEarned = order.yieldEarned || 0;
                 const currentValue = order.currentValue || order.totalAmount;
@@ -145,7 +172,7 @@ export default function Orders() {
                       <div className="flex flex-col space-y-0.5">
                         <span className="font-medium text-sm" aria-label={`Current value: ${formatCurrency(currentValue)}`}>{formatCurrency(currentValue)}</span>
                         {currentValue !== order.totalAmount && (
-                          <span className={`text-xs ${currentValue > order.totalAmount ? 'text-green-600' : 'text-red-600'}`} aria-label={`Value change: ${currentValue > order.totalAmount ? 'gain of' : 'loss of'} ${formatCurrency(Math.abs(currentValue - order.totalAmount))}`}>
+                          <span className={`${currentValue > order.totalAmount ? 'text-green-600' : 'text-red-600'} text-xs`} aria-label={`Value change: ${currentValue > order.totalAmount ? 'gain of' : 'loss of'} ${formatCurrency(Math.abs(currentValue - order.totalAmount))}`}>
                             {currentValue > order.totalAmount ? '+' : ''}
                             {formatCurrency(currentValue - order.totalAmount)}
                           </span>

@@ -1,28 +1,119 @@
 import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useWallet } from "@/hooks/use-wallet";
-import { SEED_LOTS } from '@shared/seed-data.js';
 import LotCard from "./lot-card";
+import { MOCK_USERS } from "@shared/seed-data.js";
 
 export default function Marketplace() {
-  const { isConnected, isConnecting, connect } = useWallet();
+  const { isConnected, isConnecting, connect, account } = useWallet();
+  // Map Hedera wallet accountId -> internal buyerId used by SEED_ORDERS
+  const buyerUserId = (() => {
+    const wallet = account?.accountId;
+    if (!wallet) return undefined;
+    const users = Object.values(MOCK_USERS || {});
+    const found = users.find((u) => u?.wallet === wallet);
+    return found?.id;
+  })();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priceRange, setPriceRange] = useState({ min: 0, max: 100 });
 
+  // Fetch lots from API (with fallback handled in queryClient for /api/lots)
+  const { data: resp, isLoading, error } = useQuery({ queryKey: ["/api", "lots"] });
+  const lots = Array.isArray(resp?.data) ? resp.data : [];
+
+  const statusMap = {
+    AVAILABLE: ["LISTED"],
+    RESERVED: ["ESCROWED"],
+    SOLD: ["SETTLED", "RETIRED", "SOLD_OUT"],
+  };
+
   // Filter lots based on search and filter criteria
-  const filteredLots = SEED_LOTS.filter(lot => {
-    const matchesSearch = lot.projectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lot.location.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === 'all' || lot.projectType === typeFilter;
-    const matchesStatus = statusFilter === 'all' || lot.status === statusFilter;
-    const matchesPrice = lot.pricePerTon >= priceRange.min && lot.pricePerTon <= priceRange.max;
-    
+  const filteredLots = lots.filter((lot) => {
+    const matchesSearch =
+      lot.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lot.location?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesType = typeFilter === "all" || lot.type === typeFilter;
+
+    const allowedStatuses = statusMap[statusFilter] || [];
+    const matchesStatus = statusFilter === "all" || allowedStatuses.includes(lot.status);
+
+    const price = Number(lot.pricePerTon ?? 0);
+    const matchesPrice = price >= (priceRange.min ?? 0) && price <= (priceRange.max ?? 100);
+
     return matchesSearch && matchesType && matchesStatus && matchesPrice;
   });
+
+  // Handle purchase updates: adjust available/listed tons and status in cache
+  const handlePurchase = (lotRef, orderId, qty) => {
+    // Update Lots cache optimistically
+    queryClient.setQueryData(["/api", "lots"], (prev) => {
+      if (!prev || !Array.isArray(prev.data)) return prev;
+      const updatedData = prev.data.map((l) => {
+        const isSame = (l.id && lotRef.id && l.id === lotRef.id) || (l.lotId && lotRef.lotId && l.lotId === lotRef.lotId);
+        if (!isSame) return l;
+        const current = Number(l.availableTons ?? l.listedTons ?? 0);
+        const remaining = Math.max(current - Number(qty || 0), 0);
+        const nextStatus = remaining === 0 ? "ESCROWED" : l.status;
+        const updated = { ...l, status: nextStatus };
+        if (Object.prototype.hasOwnProperty.call(l, "availableTons")) {
+          updated.availableTons = remaining;
+        } else {
+          updated.listedTons = remaining;
+        }
+        return updated;
+      });
+      return { ...prev, data: updatedData };
+    });
+
+    // Compose a minimal order for UI
+    const newOrder = {
+      id: orderId,
+      lotId: lotRef.lotId || lotRef.id,
+      buyerId: buyerUserId || "",
+      tons: Number(qty || 0),
+      pricePerTon: Number(lotRef.pricePerTon || 0),
+      totalAmount: Number(qty || 0) * Number(lotRef.pricePerTon || 0),
+      status: "ESCROWED",
+      yieldStrategy: lotRef.yieldType === 'staking' ? 'staking_only' : 'carbon_appreciation',
+      yieldEarned: 0,
+      currentValue: Number(qty || 0) * Number(lotRef.pricePerTon || 0),
+      expectedAPY: Number(lotRef.stakingAPY || 0),
+      createdAt: new Date().toISOString(),
+    };
+
+    // Update Orders (all) cache
+    queryClient.setQueryData(["/api", "orders"], (prev) => {
+      if (!prev) return { data: [newOrder] };
+      if (!Array.isArray(prev.data)) return prev;
+      // Prevent duplicates
+      if (prev.data.some((o) => o.id === newOrder.id)) return prev;
+      return { ...prev, data: [newOrder, ...prev.data] };
+    });
+
+    // Update Orders filtered by buyer cache
+    if (buyerUserId) {
+      const key = ["/api", `orders?buyerId=${encodeURIComponent(buyerUserId)}`];
+      queryClient.setQueryData(key, (prev) => {
+        if (!prev) return { data: [newOrder] };
+        if (!Array.isArray(prev.data)) return prev;
+        if (prev.data.some((o) => o.id === newOrder.id)) return prev;
+        return { ...prev, data: [newOrder, ...prev.data] };
+      });
+    }
+
+    // Invalidate to refetch from API when available
+    queryClient.invalidateQueries({ queryKey: ["/api", "orders"], exact: false });
+    if (buyerUserId) {
+      queryClient.invalidateQueries({ queryKey: ["/api", `orders?buyerId=${encodeURIComponent(buyerUserId)}`], exact: true });
+    }
+  };
 
   return (
     <>
@@ -36,12 +127,8 @@ export default function Marketplace() {
           <p className="text-sm text-cyan-200">
             You can browse freely. Connect your Hedera wallet to purchase or reserve credits.
           </p>
-          <Button
-            onClick={connect}
-            disabled={isConnecting}
-            className="h-8 text-sm rounded-lg"
-          >
-            {isConnecting ? 'Connecting…' : 'Connect Wallet'}
+          <Button onClick={connect} disabled={isConnecting} className="h-8 text-sm rounded-lg">
+            {isConnecting ? "Connecting…" : "Connect Wallet"}
           </Button>
         </div>
       )}
@@ -83,16 +170,16 @@ export default function Marketplace() {
             <Input
               type="number"
               placeholder="Min $"
-              value={priceRange.min || ''}
-              onChange={(e) => setPriceRange(prev => ({ ...prev, min: parseFloat(e.target.value) || 0 }))}
+              value={priceRange.min || ""}
+              onChange={(e) => setPriceRange((prev) => ({ ...prev, min: parseFloat(e.target.value) || 0 }))}
               className="h-9 text-sm bg-white/5 border-white/10 w-20"
               data-testid="price-min"
             />
             <Input
               type="number"
               placeholder="Max $"
-              value={priceRange.max || ''}
-              onChange={(e) => setPriceRange(prev => ({ ...prev, max: parseFloat(e.target.value) || 100 }))}
+              value={priceRange.max || ""}
+              onChange={(e) => setPriceRange((prev) => ({ ...prev, max: parseFloat(e.target.value) || 100 }))}
               className="h-9 text-sm bg-white/5 border-white/10 w-20"
               data-testid="price-max"
             />
@@ -100,51 +187,64 @@ export default function Marketplace() {
         </div>
       </div>
 
+      {/* Loading / Error States */}
+      {isLoading && (
+        <div className="text-center text-muted-foreground py-12">Loading marketplace…</div>
+      )}
+      {error && !isLoading && (
+        <div className="text-center text-red-300 py-12">Failed to load marketplace.</div>
+      )}
+
       {/* Marketplace Grid */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
-        {filteredLots.length === 0 ? (
-          <div className="col-span-full text-center py-16">
-            <div className="mb-6">
-              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <svg className="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold text-foreground mb-3">
-                {SEED_LOTS.length === 0 ? 'No Carbon Credits Available' : 'No Results Found'}
-              </h3>
-              <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
-                {SEED_LOTS.length === 0 
-                  ? 'The marketplace is currently empty. Carbon credit lots will appear here once projects generate tokenized credits.'
-                  : 'Try adjusting your search criteria or filters to find carbon credits that match your requirements.'
-                }
-              </p>
-              {SEED_LOTS.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  <p>💡 Tip: Visit the Project Sheets tab to create new carbon credit projects</p>
+      {!isLoading && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
+          {filteredLots.length === 0 ? (
+            <div className="col-span-full text-center py-16">
+              <div className="mb-6">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-blue-500/10 flex items-center justify-center">
+                  <svg className="w-10 h-10 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
                 </div>
-              ) : (
-                <Button 
-                  onClick={() => {
-                    setSearchTerm('');
-                    setTypeFilter('all');
-                    setStatusFilter('all');
-                    setPriceRange({ min: 0, max: 100 });
-                  }}
-                  variant="outline"
-                  className="border-white/20 hover:bg-white/5"
-                >
-                  Clear All Filters
-                </Button>
-              )}
+                <h3 className="text-xl font-semibold text-foreground mb-3">
+                  {lots.length === 0 ? "No Carbon Credits Available" : "No Results Found"}
+                </h3>
+                <p className="text-muted-foreground mb-6 max-w-lg mx-auto">
+                  {lots.length === 0
+                    ? "The marketplace is currently empty. Carbon credit lots will appear here once projects generate tokenized credits."
+                    : "Try adjusting your search criteria or filters to find carbon credits that match your requirements."}
+                </p>
+                {lots.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">
+                    <p>💡 Tip: Visit the Project Sheets tab to create new carbon credit projects</p>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setSearchTerm("");
+                      setTypeFilter("all");
+                      setStatusFilter("all");
+                      setPriceRange({ min: 0, max: 100 });
+                    }}
+                    variant="outline"
+                    className="border-white/20 hover:bg-white/5"
+                  >
+                    Clear All Filters
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-        ) : (
-          filteredLots.map((lot) => (
-            <LotCard key={lot.id} lot={lot} />
-          ))
-        )}
-      </div>
+          ) : (
+            filteredLots.map((lot) => (
+              <LotCard
+                key={lot.id || lot.lotId}
+                lot={lot}
+                onPurchase={(orderId, quantity) => handlePurchase(lot, orderId, quantity)}
+              />
+            ))
+          )}
+        </div>
+      )}
     </>
   );
 }

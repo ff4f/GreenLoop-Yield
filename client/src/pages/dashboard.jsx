@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,22 @@ function DashboardContent() {
     { value: "proof-feed", label: "Proof Feed", icon: null },
     { value: "claims-helper", label: "Claims Helper", icon: null }
   ];
+
+  // Initialize active tab from URL hash (e.g., /app#marketplace)
+  useEffect(() => {
+    const hash = (window.location.hash || '').replace('#', '');
+    if (hash && tabs.some(t => t.value === hash)) {
+      setActiveTab(hash);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep URL hash in sync when tab changes
+  useEffect(() => {
+    if (activeTab) {
+      window.location.hash = activeTab;
+    }
+  }, [activeTab]);
 
   // Primary actions for each tab
   const handlePrimaryAction = (tabId) => {
