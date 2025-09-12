@@ -5,13 +5,15 @@ import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import TopTabs from "./top-tabs";
 import { useWallet } from "@/hooks/use-wallet";
-import { HelpCircle } from "lucide-react";
+import { useProofStore } from "@/contexts/proof-store";
+import { HelpCircle, FileSearch } from "lucide-react";
 
 // Mock HCS Topic ID untuk demo
 const mockHcsTopicId = "0.0.123456";
 
 const Shell = ({ children, kpiData = [], activeTab, onTabChange, tabs = [], useCustomTabs = false }) => {
-  const { isConnected, isConnecting, connect } = useWallet();
+  const { isConnected, isConnecting, connect, disconnect, walletData } = useWallet();
+  const { isInspectorCollapsed, toggleInspector, evidence } = useProofStore();
   return (
     <div className="min-h-screen bg-background">
       {/* Sticky Header with Blur */}
@@ -41,6 +43,23 @@ const Shell = ({ children, kpiData = [], activeTab, onTabChange, tabs = [], useC
               className="transition-all duration-200"
             >
               {isConnecting ? 'Connecting...' : (isConnected ? `Connected: ${walletData?.accountId}` : 'Connect Wallet')}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-7 w-7 relative"
+              onClick={toggleInspector}
+              title={isInspectorCollapsed ? "Show Proof Inspector" : "Hide Proof Inspector"}
+            >
+              <FileSearch className="h-4 w-4 text-muted-foreground" />
+              {evidence.length > 0 && (
+                <Badge 
+                  variant="secondary" 
+                  className="absolute -top-1 -right-1 h-4 w-4 p-0 text-xs flex items-center justify-center"
+                >
+                  {evidence.length}
+                </Badge>
+              )}
             </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7">
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
@@ -75,7 +94,10 @@ const Shell = ({ children, kpiData = [], activeTab, onTabChange, tabs = [], useC
 
       {/* Main Content Area */}
       <main className="flex-1">
-        <div className="container-app mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className={cn(
+          "container-app mx-auto px-4 sm:px-6 lg:px-8 w-full transition-all duration-300",
+          !isInspectorCollapsed ? "pr-80 xl:pr-96" : "pr-12"
+        )}>
           <div className="py-4">
             {/* Full-width Main Content */}
             <div className="space-y-4">

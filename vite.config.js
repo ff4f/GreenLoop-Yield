@@ -16,7 +16,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "client", "src"),
       "@shared": path.resolve(__dirname, "shared"),
       "@assets": path.resolve(__dirname, "attached_assets"),
-      buffer: 'buffer',
+      crypto: 'crypto-browserify',
+      util: 'util',
     },
   },
   define: {
@@ -24,7 +25,7 @@ export default defineConfig({
     'process.env': {},
   },
   optimizeDeps: {
-    include: ['@hashgraph/sdk', '@hashgraph/hashconnect'],
+    include: ['@hashgraph/sdk', '@hashgraph/hashconnect', 'crypto-browserify', 'util'],
     esbuildOptions: {
       define: {
         global: 'globalThis',
@@ -32,7 +33,7 @@ export default defineConfig({
       plugins: [
         NodeGlobalsPolyfillPlugin({
           process: true,
-          buffer: false, // Disable buffer polyfill to avoid conflicts
+          buffer: false,
         }),
         NodeModulesPolyfillPlugin(),
       ],
@@ -47,6 +48,13 @@ export default defineConfig({
       output: {
         manualChunks: undefined,
       },
+      plugins: [
+        NodeGlobalsPolyfillPlugin({
+           process: true,
+           buffer: false,
+         }),
+        NodeModulesPolyfillPlugin(),
+      ],
     },
   },
 });

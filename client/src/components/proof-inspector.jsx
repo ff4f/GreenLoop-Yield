@@ -67,12 +67,12 @@ export default function ProofInspector() {
 
   if (isInspectorCollapsed) {
     return (
-      <div className="fixed right-0 top-[73px] bottom-0 w-12 bg-card border-l border-border z-30">
+      <div className="fixed right-0 top-[73px] bottom-0 w-12 bg-card border-l border-border z-30 transition-all duration-300 ease-in-out">
         <Button
           variant="ghost"
           size="sm"
           onClick={toggleInspector}
-          className="w-full h-12 rounded-none border-b border-border"
+          className="w-full h-12 rounded-none border-b border-border hover:bg-muted/50"
           aria-label="Expand proof inspector"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
@@ -90,7 +90,7 @@ export default function ProofInspector() {
   }
 
   return (
-    <div className="fixed right-0 top-[73px] bottom-0 w-96 bg-card border-l border-border z-30 flex flex-col">
+    <div className="fixed right-0 top-[73px] bottom-0 w-80 xl:w-96 bg-card border-l border-border z-30 flex flex-col transition-all duration-300 ease-in-out shadow-lg">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center space-x-2">

@@ -99,7 +99,7 @@ export function ProofStoreProvider({ children }) {
   const [evidence, setEvidence] = useState(() => loadEvidenceFromStorage());
   const [liveProofFeed, setLiveProofFeed] = useState([]);
   const [isLoadingFeed, setIsLoadingFeed] = useState(false);
-  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(false);
+  const [isInspectorCollapsed, setIsInspectorCollapsed] = useState(true);
   const { toast } = useToast();
 
   // Save to localStorage whenever evidence changes

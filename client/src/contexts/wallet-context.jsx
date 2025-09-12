@@ -116,19 +116,30 @@ export const WalletProvider = ({ children }) => {
     try {
       // Check if any wallet extensions are available
       if (availableExtensions.length === 0) {
-        throw new Error('No Hedera wallet extensions found. Please install HashPack, Blade, or another supported wallet.');
+        // Tetap lanjutkan: beberapa wallet extension mendukung connect walau tidak terdeteksi melalui findLocalWallets
+        console.warn('No Hedera wallet extensions found by detection. Proceeding to open wallet if available...');
       }
 
-      // Connect to HashConnect
-      await hashConnect.connectToLocalWallet();
+      // Create or resume a pairing topic then generate pairing string (HashConnect v1 flow)
+      const state = await hashConnect.connect();
+      const pairingString = hashConnect.generatePairingString(state, 'testnet', false);
+
+      // Store topic to allow reconnection later
+      if (state?.topic) {
+        localStorage.setItem('hashconnect_topic', state.topic);
+      }
+
+      // Prompt local wallet (HashPack extension) to pair
+      await hashConnect.connectToLocalWallet(pairingString);
       
       // The actual connection will be handled by the pairingEvent listener
       // which was set up in initializeHashConnect
       
     } catch (error) {
       console.error('Wallet connection failed:', error);
-      setError(error.message || 'Failed to connect wallet');
-      toast.error(error.message || 'Failed to connect wallet. Please try again.');
+      const message = (error && (error.message || error.toString())) || 'Failed to connect wallet';
+      setError(message);
+      toast.error(message || 'Failed to connect wallet. Please try again.');
       setIsConnecting(false);
     }
   };

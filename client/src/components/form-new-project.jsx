@@ -220,12 +220,12 @@ const FormNewProject = ({ onProjectCreated }) => {
   };
 
   return (
-    <Card>
+    <Card className="w-full max-w-none">
       <CardHeader>
         <CardTitle>New Project Input</CardTitle>
       </CardHeader>
-      <CardContent>
-        <form className="space-y-4">
+      <CardContent className="overflow-hidden">
+        <form className="space-y-4 w-full min-w-0">
           {/* Project Name */}
           <div>
             <Label htmlFor="projectName" className="text-xs font-medium text-muted-foreground">
@@ -273,7 +273,7 @@ const FormNewProject = ({ onProjectCreated }) => {
           </div>
 
           {/* Numeric Fields in Paired Rows */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
             <div>
               <Label htmlFor="area" className="text-xs font-medium text-muted-foreground">
                 Area (ha) *
@@ -305,7 +305,7 @@ const FormNewProject = ({ onProjectCreated }) => {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <Label htmlFor="buffer" className="text-xs font-medium text-muted-foreground">

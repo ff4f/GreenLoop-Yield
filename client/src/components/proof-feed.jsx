@@ -26,7 +26,8 @@ export default function ProofFeed() {
     proofType: '',
     title: '',
     description: '',
-    file: null
+    file: null,
+    url: ''
   });
   const { toast } = useToast();
   const { addEvidence } = useProofStore();
@@ -55,6 +56,9 @@ export default function ProofFeed() {
   };
 
   const handleAddProof = async () => {
+    // Prevent multiple submissions
+    if (isUploading) return;
+    
     if (validateStep(4)) {
       if (!proofForm.lotId || !proofForm.proofType || !proofForm.title || !proofForm.file) {
         toast({
@@ -67,8 +71,13 @@ export default function ProofFeed() {
 
       setIsUploading(true);
       try {
-        // Step 1: Create file on HFS
-        const fileResult = await hederaService.createFile(proofForm.file.name);
+        // Step 1: Create file on HFS with timeout
+        const fileResult = await Promise.race([
+          hederaService.createFile(proofForm.file.name),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('File creation timeout')), 10000)
+          )
+        ]);
         
         // Step 2: Submit topic message (PROOF_UPLOADED)
         const topicMessage = {
@@ -81,33 +90,43 @@ export default function ProofFeed() {
           timestamp: new Date().toISOString()
         };
         
-        const topicResult = await hederaService.submitMessage(
-          MOCK_IDS.HCS_TOPICS.PROJECT_PROOFS,
-          JSON.stringify(topicMessage)
-        );
+        const topicResult = await Promise.race([
+          hederaService.submitMessage(
+            MOCK_IDS.HCS_TOPICS.PROJECT_PROOFS,
+            JSON.stringify(topicMessage)
+          ),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Topic submission timeout')), 10000)
+          )
+        ]);
         
         // Step 3: Add evidence to proof store
         addEvidence({
           kind: "file",
-          lotId: proofForm.lotId,
-          metadata: {
-            fileId: fileResult.fileId,
+          id: fileResult.fileId,
+          label: `Proof File: ${proofForm.title}`,
+          meta: {
+            lotId: proofForm.lotId,
             proofType: proofForm.proofType,
             title: proofForm.title,
             description: proofForm.description,
             timestamp: new Date().toISOString()
-          }
+          },
+          source: 'Proof Upload'
         });
         
         addEvidence({
           kind: "topic",
-          lotId: proofForm.lotId,
-          metadata: {
+          id: topicResult.sequenceNumber,
+          label: `Topic Message: PROOF_UPLOADED`,
+          meta: {
+            lotId: proofForm.lotId,
             topicId: MOCK_IDS.HCS_TOPICS.PROJECT_PROOFS,
             sequenceNumber: topicResult.sequenceNumber,
             action: 'PROOF_UPLOADED',
             timestamp: new Date().toISOString()
-          }
+          },
+          source: 'Proof Upload'
         });
         
         toast({
@@ -136,8 +155,11 @@ export default function ProofFeed() {
           proofType: '',
           title: '',
           description: '',
-          file: null
+          file: null,
+          url: ''
         });
+        setCurrentStep(1);
+        setFormErrors({});
         setIsAddProofOpen(false);
         
       } catch (error) {
@@ -171,11 +193,12 @@ export default function ProofFeed() {
         <Sheet open={isAddProofOpen} onOpenChange={setIsAddProofOpen} aria-labelledby="add-proof-title">
           <SheetTrigger asChild>
             <Button 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm"
               disabled={!isConnected}
               aria-label="Add new proof"
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-3 h-3 mr-1.5" />
               Add Proof
             </Button>
           </SheetTrigger>
@@ -243,9 +266,15 @@ export default function ProofFeed() {
               )}
             </div>
             <SheetFooter className="flex justify-between p-4 border-t border-white/10">
-              {currentStep > 1 && <Button variant="outline" onClick={handlePrevious} aria-label="Go to previous step">Previous</Button>}
+              {currentStep > 1 && (
+                <Button variant="outline" onClick={handlePrevious} disabled={isUploading} aria-label="Go to previous step">
+                  Previous
+                </Button>
+              )}
               {currentStep < 4 ? (
-                <Button onClick={handleNext} aria-label="Go to next step">Next</Button>
+                <Button onClick={handleNext} disabled={isUploading} aria-label="Go to next step">
+                  Next
+                </Button>
               ) : (
                 <Button onClick={handleAddProof} disabled={isUploading || !isConnected} aria-label="Publish proof">
                   {isUploading ? "Publishing..." : "Publish"}
@@ -295,17 +324,19 @@ export default function ProofFeed() {
             </p>
             {isConnected ? (
               <Button 
+                size="sm"
                 onClick={() => setIsAddProofOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-3 h-3 mr-1.5" />
                 Submit First Proof
               </Button>
             ) : (
               <div className="space-y-4">
                 <Button 
+                  size="sm"
                   onClick={connect}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm"
                 >
                   Connect Wallet to Submit Proofs
                 </Button>

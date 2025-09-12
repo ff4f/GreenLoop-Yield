@@ -95,15 +95,15 @@ export default function ProjectSheets() {
             </div>
           )}
           <div className="p-5 sm:p-6">
-            <div className="grid grid-cols-12 gap-4 min-w-0">
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-w-0">
               {/* Left inner: New Project Form */}
-              <div className="col-span-12 lg:col-span-7 min-w-0">
+              <div className="xl:col-span-7 min-w-0 w-full">
                 <FormNewProject formData={formData} setFormData={setFormData} />
               </div>
               
               {/* Right inner: Real-time Calculations + Tips */}
-              <div className="col-span-12 lg:col-span-5 min-w-0">
-                <div className="lg:sticky lg:top-24 space-y-4">
+              <div className="xl:col-span-5 min-w-0 w-full">
+                <div className="xl:sticky xl:top-24 space-y-4">
                   <RealtimeCalc formData={formData} />
                   <Tips />
                 </div>
