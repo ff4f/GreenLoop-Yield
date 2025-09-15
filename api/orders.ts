@@ -12,6 +12,8 @@ import { HederaRealService } from '../shared/hedera-real.js';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth-guard.js';
 // @ts-ignore
 import { PERMISSIONS, USER_ROLES } from '../shared/guards.js';
+// @ts-ignore
+import { idempotencyMiddleware, requireIdempotencyKey } from '../middleware/idempotency.js';
 
 // Use real or mock service based on environment
 const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
@@ -159,6 +161,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         
         if (action === 'buy') {
+          // Apply idempotency middleware for buy operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for buy operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
           // Buy/Escrow action from Marketplace
           const { lotId, buyerId, tons, pricePerTon } = req.body;
           
@@ -328,6 +342,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         
         if (action === 'mark-delivered') {
+          // Apply idempotency middleware for deliver operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for deliver operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
           // Mark Delivered action
           const { userId, deliveryProof } = req.body;
           
@@ -406,7 +432,226 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ]
             }
           });
+        } else if (action === 'dispute') {
+          // Apply idempotency middleware for dispute operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for dispute operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
+          // Raise Dispute action
+          const { userId, reason } = req.body;
+          
+          if (!userId || !reason) {
+            return res.status(400).json({ 
+              error: 'Missing required fields: userId, reason' 
+            });
+          }
+          
+          // Check if order can be disputed (only ESCROW status)
+          if (existingOrder.status !== OrderStatus.ESCROW) {
+            return res.status(400).json({ 
+              error: 'Order can only be disputed when in escrow status',
+              toast: {
+                type: 'error',
+                message: 'Disputes can only be raised for orders in escrow.'
+              }
+            });
+          }
+          
+          // Update order status to DISPUTED
+          const disputedOrder = await QueryHelpers.updateOrder(orderId, {
+            status: OrderStatus.DISPUTED,
+            disputeReason: reason,
+            disputeRaisedBy: userId,
+            disputeRaisedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+          
+          // Log analytics and audit
+          await logAnalytics('order_disputed', 1, { 
+            orderId, 
+            reason,
+            raisedBy: userId
+          });
+          
+          await logAudit(userId, 'raise_dispute', 'order', orderId, {
+            reason,
+            previousStatus: existingOrder.status
+          });
+          
+          return res.status(200).json({
+            success: true,
+            data: disputedOrder,
+            toast: {
+              type: 'success',
+              message: 'Dispute raised successfully. Admin will review your case.'
+            }
+          });
+        } else if (action === 'resolve') {
+          // Apply idempotency middleware for resolve operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for resolve operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
+          // Resolve Dispute action (Admin only)
+          const { adminId, resolution, decision } = req.body;
+          
+          if (!adminId || !resolution || !decision) {
+            return res.status(400).json({ 
+              error: 'Missing required fields: adminId, resolution, decision' 
+            });
+          }
+          
+          // Check if order is disputed
+          if (existingOrder.status !== OrderStatus.DISPUTED) {
+            return res.status(400).json({ 
+              error: 'Order is not in disputed status',
+              toast: {
+                type: 'error',
+                message: 'Only disputed orders can be resolved.'
+              }
+            });
+          }
+          
+          let newStatus;
+          let payoutTx = null;
+          
+          if (decision === 'settle') {
+            // Admin decides to settle - release escrow
+            newStatus = OrderStatus.COMPLETED;
+            
+            // Calculate payout split
+            const developerPayout = Number(existingOrder.total) * 0.7;
+            const investorPoolCredit = Number(existingOrder.total) * 0.2;
+            const platformFee = Number(existingOrder.total) * 0.1;
+            
+            // Simulate payout transaction
+            payoutTx = await HederaService.transaction.createTransaction(
+              'PAYOUT',
+              Number(existingOrder.total),
+              `Dispute resolved - settle order ${orderId}`
+            );
+            
+            // Update investor pool TVL
+            await QueryHelpers.updateInvestorPoolTVL(investorPoolCredit);
+            
+            // Log investor flow
+            await QueryHelpers.createInvestorFlow({
+              id: generateId('FLOW'),
+              userId: null,
+              type: 'CREDIT_FROM_SETTLEMENT',
+              amount: investorPoolCredit,
+              sharesDelta: 0,
+              orderId: orderId,
+              txHash: payoutTx.transactionId,
+              metadata: { source: 'dispute_resolution_settle' },
+              createdAt: new Date().toISOString()
+            });
+            
+          } else if (decision === 'refund') {
+            // Admin decides to refund - return money to buyer
+            newStatus = OrderStatus.REFUNDED;
+            
+            // Simulate refund transaction
+            payoutTx = await HederaService.transaction.createTransaction(
+              'REFUND',
+              Number(existingOrder.total),
+              `Dispute resolved - refund order ${orderId}`
+            );
+            
+            // Restore lot availability
+            const lot = await QueryHelpers.getCarbonLotById(existingOrder.lotId);
+            if (lot) {
+              const newAvailableTons = Number(lot.availableTons) + Number(existingOrder.tons);
+              const newLotStatus = newAvailableTons === Number(lot.totalTons) ? LotStatus.LISTED : LotStatus.PARTIALLY_SOLD;
+              
+              await QueryHelpers.updateCarbonLot(existingOrder.lotId, {
+                availableTons: newAvailableTons,
+                status: newLotStatus,
+                updatedAt: new Date().toISOString()
+              });
+            }
+          } else {
+            return res.status(400).json({ 
+              error: 'Invalid decision. Must be "settle" or "refund"' 
+            });
+          }
+          
+          // Update order with resolution
+          const resolvedOrder = await QueryHelpers.updateOrder(orderId, {
+            status: newStatus,
+            disputeResolvedBy: adminId,
+            disputeResolvedAt: new Date().toISOString(),
+            disputeResolution: resolution,
+            payoutTxHash: payoutTx?.transactionId,
+            updatedAt: new Date().toISOString()
+          });
+          
+          // Log analytics and audit
+          await logAnalytics('dispute_resolved', 1, { 
+            orderId, 
+            decision,
+            resolvedBy: adminId
+          });
+          
+          await logAudit(adminId, 'resolve_dispute', 'order', orderId, {
+            decision,
+            resolution,
+            previousStatus: OrderStatus.DISPUTED,
+            newStatus,
+            payoutTxId: payoutTx?.transactionId
+          });
+          
+          return res.status(200).json({
+            success: true,
+            data: resolvedOrder,
+            proofOutputs: {
+              decision,
+              resolution,
+              txId: payoutTx?.transactionId,
+              status: `Dispute resolved - ${decision}`
+            },
+            proofLinks: payoutTx ? {
+              transaction: ProofLink.buildTransactionLink(payoutTx.transactionId)
+            } : {},
+            toast: {
+              type: 'success',
+              message: `Dispute resolved successfully. Decision: ${decision}`,
+              links: payoutTx ? [
+                {
+                  text: 'View Transaction',
+                  url: ProofLink.buildTransactionLink(payoutTx.transactionId)
+                }
+              ] : []
+            }
+          });
         } else if (action === 'release-escrow') {
+          // Apply idempotency middleware for release-escrow operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for release-escrow operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
           // Release Escrow action
           const { userId } = req.body;
           

@@ -3,13 +3,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Eye, Download, ExternalLink, TrendingUp, Percent, DollarSign, Zap } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Eye, Download, ExternalLink, TrendingUp, Percent, DollarSign, Zap, AlertTriangle } from 'lucide-react';
 import { useWallet } from '@/hooks/use-wallet';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MOCK_USERS } from '@shared/seed-data.js';
 
 export default function Orders() {
   const { isConnected, isConnecting, connect, account } = useWallet();
+  const queryClient = useQueryClient();
+  const [disputeDialogOpen, setDisputeDialogOpen] = React.useState(false);
+  const [selectedOrder, setSelectedOrder] = React.useState(null);
+  const [disputeReason, setDisputeReason] = React.useState('');
+  
   // Map Hedera wallet accountId -> internal buyerId used by SEED_ORDERS
   const buyerUserId = React.useMemo(() => {
     const wallet = account?.accountId;
@@ -58,10 +66,75 @@ export default function Orders() {
       case 'pending':
         return 'secondary';
       case 'processing':
+      case 'escrow':
         return 'outline';
+      case 'disputed':
+        return 'destructive';
+      case 'cancelled':
+      case 'refunded':
+        return 'secondary';
       default:
         return 'destructive';
     }
+  };
+  
+  // Mutation for raising dispute
+  const disputeMutation = useMutation({
+    mutationFn: async ({ orderId, reason }) => {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'dispute',
+          userId: buyerUserId,
+          reason: reason
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to raise dispute');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Refresh orders data
+      queryClient.invalidateQueries({ queryKey: ['/api', 'orders'] });
+      
+      // Close dialog and reset form
+      setDisputeDialogOpen(false);
+      setSelectedOrder(null);
+      setDisputeReason('');
+      
+      // Show success message (if toast system is available)
+      if (data.toast) {
+        console.log('Dispute raised:', data.toast.message);
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to raise dispute:', error.message);
+    }
+  });
+  
+  const handleRaiseDispute = (order) => {
+    setSelectedOrder(order);
+    setDisputeDialogOpen(true);
+  };
+  
+  const handleSubmitDispute = () => {
+    if (!selectedOrder || !disputeReason.trim()) return;
+    
+    disputeMutation.mutate({
+      orderId: selectedOrder.id,
+      reason: disputeReason.trim()
+    });
+  };
+  
+  const canRaiseDispute = (order) => {
+    return order.status?.toLowerCase() === 'escrow';
   };
 
   return (
@@ -215,6 +288,18 @@ export default function Orders() {
                         <Button variant="outline" size="sm" className="h-6 w-6 p-0" title="View on Hedera" aria-label="View transaction on Hedera network">
                           <ExternalLink className="h-3 w-3" aria-hidden="true" />
                         </Button>
+                        {canRaiseDispute(order) && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-6 w-6 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50" 
+                            title="Raise Dispute" 
+                            aria-label="Raise dispute for this order"
+                            onClick={() => handleRaiseDispute(order)}
+                          >
+                            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -227,6 +312,56 @@ export default function Orders() {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Dispute Dialog */}
+      <Dialog open={disputeDialogOpen} onOpenChange={setDisputeDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Raise Dispute</DialogTitle>
+            <DialogDescription>
+              Raise a dispute for order {selectedOrder?.id}. Please provide a detailed reason for the dispute.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="dispute-reason">Dispute Reason</Label>
+              <Textarea
+                id="dispute-reason"
+                placeholder="Please describe the issue with this order in detail..."
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                className="min-h-[100px]"
+              />
+            </div>
+            {selectedOrder && (
+              <div className="text-sm text-muted-foreground bg-muted p-3 rounded-md">
+                <div><strong>Order ID:</strong> {selectedOrder.id}</div>
+                <div><strong>Lot ID:</strong> {selectedOrder.lotId}</div>
+                <div><strong>Amount:</strong> {formatCurrency(selectedOrder.totalAmount)}</div>
+                <div><strong>Status:</strong> {selectedOrder.status}</div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDisputeDialogOpen(false);
+                setSelectedOrder(null);
+                setDisputeReason('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmitDispute}
+              disabled={!disputeReason.trim() || disputeMutation.isPending}
+            >
+              {disputeMutation.isPending ? 'Submitting...' : 'Raise Dispute'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -3,19 +3,31 @@
 
 import { QueryHelpers } from '../shared/database.js';
 import { HederaRealService } from '../shared/hedera-real.js';
+import { HederaMockService } from '../shared/hedera-mock.js';
+
+// Use real or mock service based on environment
+const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
 
 // Mirror Node API configuration
 const MIRROR_NODE_URL = process.env.MIRROR_NODE_URL || 'https://testnet.mirrornode.hedera.com';
 const POLL_INTERVAL = parseInt(process.env.MIRROR_POLL_INTERVAL) || 30000; // 30 seconds
 const MAX_MESSAGES_PER_POLL = parseInt(process.env.MIRROR_MAX_MESSAGES) || 100;
 
-// Topic IDs to monitor
+// Topic IDs to monitor - Subscribe to all gly.* topics
 const MONITORED_TOPICS = {
   CARBON_LOTS: process.env.HEDERA_TOPIC_CARBON_LOTS || '0.0.789012',
-  ORDERS: process.env.HEDERA_TOPIC_ORDERS || '0.0.789013',
+  ORDERS: process.env.HEDERA_TOPIC_ORDERS || '0.0.789013', 
   PROOFS: process.env.HEDERA_TOPIC_PROOFS || '0.0.789014',
-  SETTLEMENTS: process.env.HEDERA_TOPIC_SETTLEMENTS || '0.0.789015'
+  SETTLEMENTS: process.env.HEDERA_TOPIC_SETTLEMENTS || '0.0.789015',
+  // Additional gly.* topics
+  GLY_LOTS: process.env.HEDERA_TOPIC_GLY_LOTS || '0.0.789016',
+  GLY_ORDERS: process.env.HEDERA_TOPIC_GLY_ORDERS || '0.0.789017',
+  GLY_PROOFS: process.env.HEDERA_TOPIC_GLY_PROOFS || '0.0.789018',
+  GLY_SETTLEMENTS: process.env.HEDERA_TOPIC_GLY_SETTLEMENTS || '0.0.789019'
 };
+
+// Topic name patterns to monitor
+const TOPIC_PATTERNS = ['gly.', 'carbon.', 'proof.', 'order.', 'settlement.'];
 
 // Last processed sequence numbers for each topic
 const lastProcessedSequence = {};
@@ -139,7 +151,13 @@ class MirrorWorker {
         parsedMessage = { raw: messageContent };
       }
 
-      // Store HCS event in database
+      // Extract additional fields for audit trail
+      const lotId = parsedMessage.lotId || null;
+      const orderId = parsedMessage.orderId || null;
+      const proofType = parsedMessage.proofType || parsedMessage.type || null;
+      const userId = parsedMessage.userId || parsedMessage.submittedBy || null;
+
+      // Store HCS event in database with all required fields
       const hcsEvent = {
         id: QueryHelpers.genId('hcs'),
         topicId,
@@ -147,8 +165,17 @@ class MirrorWorker {
         consensusTimestamp: message.consensus_timestamp,
         runningHash: message.running_hash,
         messageContent,
-        parsedMessage,
+        parsedMessage: {
+          ...parsedMessage,
+          lotId,
+          orderId,
+          proofType,
+          userId,
+          timestamp: new Date().toISOString()
+        },
         topicName,
+        hcsEventId: `${topicId}-${message.sequence_number}`,
+        confirmed: true,
         createdAt: new Date(),
         processedAt: new Date()
       };
@@ -158,7 +185,7 @@ class MirrorWorker {
       // Process specific message types
       await this.handleMessageType(parsedMessage, hcsEvent);
 
-      console.log(`Stored HCS event: ${topicName} seq=${message.sequence_number} type=${parsedMessage.type || 'unknown'}`);
+      console.log(`Stored HCS event: ${topicName} seq=${message.sequence_number} type=${parsedMessage.type || 'unknown'} lotId=${lotId} orderId=${orderId}`);
     } catch (error) {
       console.error(`Failed to process message:`, error);
     }
@@ -240,8 +267,34 @@ class MirrorWorker {
       lastProcessedSequence: { ...lastProcessedSequence },
       monitoredTopics: MONITORED_TOPICS,
       pollInterval: POLL_INTERVAL,
-      mirrorNodeUrl: MIRROR_NODE_URL
+      mirrorNodeUrl: MIRROR_NODE_URL,
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      timestamp: new Date().toISOString()
     };
+  }
+
+  // Health endpoint handler
+  async getHealthStatus() {
+    try {
+      const status = this.getStatus();
+      const dbHealth = await QueryHelpers.testConnection?.() || { success: true };
+      
+      return {
+        success: true,
+        status: 'healthy',
+        worker: status,
+        database: dbHealth,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        status: 'unhealthy',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 }
 

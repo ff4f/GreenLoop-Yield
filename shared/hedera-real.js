@@ -6,11 +6,15 @@ import {
   PrivateKey,
   AccountId,
   FileCreateTransaction,
+  FileAppendTransaction,
   FileContentsQuery,
   TopicCreateTransaction,
   TopicMessageSubmitTransaction,
   TopicMessageQuery,
   TokenCreateTransaction,
+  TokenMintTransaction,
+  TokenFreezeTransaction,
+  TokenUnfreezeTransaction,
   TokenType,
   TokenSupplyType,
   TransferTransaction,
@@ -18,10 +22,20 @@ import {
   TransactionId
 } from '@hashgraph/sdk';
 
+import HederaErrorHandler from './hedera-error-handler.js';
+
 // Environment configuration
 const HEDERA_NETWORK = process.env.HEDERA_NETWORK || 'testnet';
 const OPERATOR_ID = AccountId.fromString(process.env.HEDERA_OPERATOR_ID || '0.0.123456');
-const OPERATOR_KEY = PrivateKey.fromString(process.env.HEDERA_OPERATOR_KEY || 'your-private-key');
+
+// Safe OPERATOR_KEY initialization
+let OPERATOR_KEY;
+try {
+  OPERATOR_KEY = PrivateKey.fromString(process.env.HEDERA_OPERATOR_KEY || 'mock-key');
+} catch (error) {
+  console.warn('Invalid HEDERA_OPERATOR_KEY, using mock mode');
+  OPERATOR_KEY = null;
+}
 
 // Topic IDs for different message types
 const TOPICS = {
@@ -31,8 +45,15 @@ const TOPICS = {
   SETTLEMENTS: process.env.HEDERA_TOPIC_SETTLEMENTS || '0.0.789015'
 };
 
+// Initialize error handler
+const errorHandler = new HederaErrorHandler();
+
 // Initialize Hedera client
 function getClient() {
+  if (!OPERATOR_KEY) {
+    throw new Error('Hedera client not available in mock mode');
+  }
+  
   let client;
   
   if (HEDERA_NETWORK === 'mainnet') {
@@ -75,13 +96,46 @@ export class HederaFileService {
         memo
       };
     } catch (error) {
-      console.error('HFS upload error:', error);
-      throw new Error(`Failed to upload file to HFS: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HFS_UPLOAD');
+      throw handledError;
     } finally {
       client.close();
     }
   }
   
+  static async appendFile(fileId, content) {
+    const client = getClient();
+    
+    try {
+      // Convert content to bytes if it's a string
+      const fileContents = typeof content === 'string' ? 
+        new TextEncoder().encode(content) : content;
+      
+      // Create file append transaction
+      const fileAppendTx = new FileAppendTransaction()
+        .setFileId(fileId)
+        .setContents(fileContents)
+        .setMaxTransactionFee(new Hbar(2));
+      
+      // Submit transaction
+      const fileAppendSubmit = await fileAppendTx.execute(client);
+      const fileAppendReceipt = await fileAppendSubmit.getReceipt(client);
+      
+      return {
+        fileId: fileId.toString(),
+        appendedSize: fileContents.length,
+        timestamp: new Date().toISOString(),
+        transactionId: fileAppendSubmit.transactionId.toString(),
+        status: fileAppendReceipt.status.toString()
+      };
+    } catch (error) {
+      const handledError = errorHandler.handleError(error, 'HFS_APPEND');
+      throw handledError;
+    } finally {
+      client.close();
+    }
+  }
+
   static async getFile(fileId) {
     const client = getClient();
     
@@ -95,8 +149,8 @@ export class HederaFileService {
       // Convert bytes to string
       return new TextDecoder().decode(fileContents);
     } catch (error) {
-      console.error('HFS retrieval error:', error);
-      throw new Error(`Failed to retrieve file from HFS: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HFS_RETRIEVAL');
+      throw handledError;
     } finally {
       client.close();
     }
@@ -130,8 +184,8 @@ export class HederaConsensusService {
         message: messageString
       };
     } catch (error) {
-      console.error('HCS submit error:', error);
-      throw new Error(`Failed to submit message to HCS: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HCS_SUBMIT');
+      throw handledError;
     } finally {
       client.close();
     }
@@ -181,8 +235,8 @@ export class HederaConsensusService {
       
       return messages;
     } catch (error) {
-      console.error('HCS query error:', error);
-      throw new Error(`Failed to query messages from HCS: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HCS_QUERY');
+      throw handledError;
     } finally {
       client.close();
     }
@@ -223,13 +277,105 @@ export class HederaTokenService {
         transactionId: tokenCreateSubmit.transactionId.toString()
       };
     } catch (error) {
-      console.error('HTS token creation error:', error);
-      throw new Error(`Failed to create token: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HTS_TOKEN_CREATE');
+      throw handledError;
     } finally {
       client.close();
     }
   }
   
+  static async mintToken(tokenId, amount, metadata = []) {
+    const client = getClient();
+    
+    try {
+      // Create mint transaction
+      const mintTx = new TokenMintTransaction()
+        .setTokenId(tokenId)
+        .setAmount(amount)
+        .setMaxTransactionFee(new Hbar(10));
+      
+      // Add metadata if provided (for NFTs)
+      if (metadata.length > 0) {
+        mintTx.setMetadata(metadata);
+      }
+      
+      const mintSubmit = await mintTx.execute(client);
+      const mintReceipt = await mintSubmit.getReceipt(client);
+      
+      return {
+        tokenId: tokenId.toString(),
+        amount: amount.toString(),
+        newTotalSupply: mintReceipt.totalSupply?.toString(),
+        transactionId: mintSubmit.transactionId.toString(),
+        timestamp: new Date().toISOString(),
+        status: mintReceipt.status.toString()
+      };
+    } catch (error) {
+      const handledError = errorHandler.handleError(error, 'HTS_MINT');
+      throw handledError;
+    } finally {
+      client.close();
+    }
+  }
+  
+  static async freezeToken(tokenId, accountId) {
+    const client = getClient();
+    
+    try {
+      // Create freeze transaction
+      const freezeTx = new TokenFreezeTransaction()
+        .setTokenId(tokenId)
+        .setAccountId(accountId)
+        .setMaxTransactionFee(new Hbar(1));
+      
+      const freezeSubmit = await freezeTx.execute(client);
+      const freezeReceipt = await freezeSubmit.getReceipt(client);
+      
+      return {
+        tokenId: tokenId.toString(),
+        accountId: accountId.toString(),
+        action: 'freeze',
+        transactionId: freezeSubmit.transactionId.toString(),
+        timestamp: new Date().toISOString(),
+        status: freezeReceipt.status.toString()
+      };
+    } catch (error) {
+      const handledError = errorHandler.handleError(error, 'HTS_FREEZE');
+      throw handledError;
+    } finally {
+      client.close();
+    }
+  }
+  
+  static async unfreezeToken(tokenId, accountId) {
+    const client = getClient();
+    
+    try {
+      // Create unfreeze transaction
+      const unfreezeTx = new TokenUnfreezeTransaction()
+        .setTokenId(tokenId)
+        .setAccountId(accountId)
+        .setMaxTransactionFee(new Hbar(1));
+      
+      const unfreezeSubmit = await unfreezeTx.execute(client);
+      const unfreezeReceipt = await unfreezeSubmit.getReceipt(client);
+      
+      return {
+        tokenId: tokenId.toString(),
+        accountId: accountId.toString(),
+        action: 'unfreeze',
+        transactionId: unfreezeSubmit.transactionId.toString(),
+        timestamp: new Date().toISOString(),
+        status: unfreezeReceipt.status.toString()
+      };
+    } catch (error) {
+      const handledError = errorHandler.handleError(error, 'HTS_UNFREEZE');
+      throw handledError;
+    } finally {
+      client.close();
+    }
+  }
+
   static async transferToken(tokenId, fromAccount, toAccount, amount) {
     const client = getClient();
     
@@ -253,8 +399,8 @@ export class HederaTokenService {
         status: transferReceipt.status.toString()
       };
     } catch (error) {
-      console.error('HTS transfer error:', error);
-      throw new Error(`Failed to transfer token: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'HTS_TRANSFER');
+      throw handledError;
     } finally {
       client.close();
     }
@@ -286,8 +432,8 @@ export class HederaTransactionService {
         status: transferReceipt.status.toString()
       };
     } catch (error) {
-      console.error('Transaction error:', error);
-      throw new Error(`Failed to submit transaction: ${error.message}`);
+      const handledError = errorHandler.handleError(error, 'TRANSACTION_SUBMIT');
+      throw handledError;
     } finally {
       client.close();
     }
@@ -311,6 +457,76 @@ export class HederaRealService {
   static token = HederaTokenService;
   static transaction = HederaTransactionService;
   static topics = TOPICS;
+  static errorHandler = errorHandler;
+  
+  // Initialize service with error handling
+  static async initialize() {
+    try {
+      // Validate configuration
+      const configValidation = errorHandler.validateConfiguration();
+      if (!configValidation.valid) {
+        throw new Error(`Configuration issues: ${configValidation.issues.join(', ')}`);
+      }
+      
+      // Test network connectivity
+      const connectivity = await errorHandler.checkNetworkConnectivity(this);
+      if (!connectivity.connected) {
+        throw new Error(`Network connectivity failed: ${connectivity.error}`);
+      }
+      
+      return { success: true, connectivity };
+    } catch (error) {
+      throw error;
+    }
+  }
+  
+  // Network utilities with error handling
+  static async getNetworkStatus() {
+    return await errorHandler.withRetry(
+      async () => {
+        const client = getClient();
+        try {
+          const balance = await new AccountBalanceQuery()
+            .setAccountId(OPERATOR_ID)
+            .execute(client);
+          
+          return {
+            network: HEDERA_NETWORK,
+            operatorId: OPERATOR_ID.toString(),
+            balance: balance.hbars.toString(),
+            connected: true,
+            timestamp: new Date().toISOString()
+          };
+        } finally {
+          client.close();
+        }
+      },
+      {
+        maxAttempts: 3,
+        context: 'Network status check'
+      }
+    );
+  }
+  
+  static async testConnection() {
+    try {
+      const status = await this.getNetworkStatus();
+      return { success: true, status };
+    } catch (error) {
+      const errorInfo = errorHandler.categorizeError(error);
+      return { 
+        success: false, 
+        error: error.message,
+        category: errorInfo.category,
+        suggestion: errorInfo.suggestion
+      };
+    }
+  }
+  
+  // Create circuit breaker for critical operations
+  static createCircuitBreaker(options = {}) {
+    return errorHandler.createCircuitBreaker(options);
+  }
   
   // Utility methods
   static async uploadFile(content, memo = '') {
@@ -345,6 +561,18 @@ export class HederaRealService {
     // No simulation needed for real service
     return;
   }
+  
+  // Close connections
+  static async close() {
+    try {
+      // Close any open clients or connections
+    } catch (error) {
+      // Handle close errors
+    }
+  }
 }
 
 export default HederaRealService;
+
+// CommonJS compatibility for Jest
+// ES module exports only

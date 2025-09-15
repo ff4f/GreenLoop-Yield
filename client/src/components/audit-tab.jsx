@@ -190,6 +190,63 @@ const mockAuditLogs = [
     },
     severity: 'warning',
     category: 'data_modification'
+  },
+  {
+    id: 'audit-006',
+    timestamp: '2024-01-25T10:30:00Z',
+    userId: 'user-003',
+    userName: 'Green Corp',
+    userRole: 'buyer',
+    action: 'RAISE_DISPUTE',
+    resource: 'order',
+    resourceId: 'order-001',
+    resourceName: 'Purchase Order #001',
+    description: 'Raised dispute: Quality does not match description',
+    ipAddress: '203.0.113.10',
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64)',
+    status: 'success',
+    changes: {
+      before: { status: 'completed' },
+      after: { status: 'disputed', disputeReason: 'Quality does not match description' }
+    },
+    metadata: {
+      sessionId: 'sess-456',
+      requestId: 'req-789',
+      transactionHash: '0xdispute123...',
+      blockNumber: 12350,
+      disputeId: 'dispute-001'
+    },
+    severity: 'warning',
+    category: 'dispute'
+  },
+  {
+    id: 'audit-007',
+    timestamp: '2024-01-22T16:30:00Z',
+    userId: 'user-002',
+    userName: 'Admin User',
+    userRole: 'admin',
+    action: 'RESOLVE_DISPUTE',
+    resource: 'order',
+    resourceId: 'order-002',
+    resourceName: 'Purchase Order #002',
+    description: 'Resolved dispute in favor of settlement',
+    ipAddress: '10.0.0.50',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    status: 'success',
+    changes: {
+      before: { status: 'disputed' },
+      after: { status: 'completed', resolution: 'settle', resolvedAt: '2024-01-22T16:30:00Z' }
+    },
+    metadata: {
+      sessionId: 'sess-789',
+      requestId: 'req-101',
+      transactionHash: '0xresolve456...',
+      blockNumber: 12348,
+      disputeId: 'dispute-002',
+      resolutionType: 'settle'
+    },
+    severity: 'info',
+    category: 'dispute'
   }
 ];
 
@@ -201,6 +258,8 @@ const actionColors = {
   CREATE_ORDER: 'bg-indigo-100 text-indigo-800',
   UPDATE_ORDER: 'bg-blue-100 text-blue-800',
   DELETE_ORDER: 'bg-red-100 text-red-800',
+  RAISE_DISPUTE: 'bg-orange-100 text-orange-800',
+  RESOLVE_DISPUTE: 'bg-emerald-100 text-emerald-800',
   LOGIN: 'bg-gray-100 text-gray-800',
   LOGOUT: 'bg-gray-100 text-gray-800',
   FAILED_LOGIN: 'bg-red-100 text-red-800',
@@ -224,6 +283,7 @@ const categoryColors = {
   data_modification: 'bg-blue-100 text-blue-800',
   verification: 'bg-purple-100 text-purple-800',
   transaction: 'bg-green-100 text-green-800',
+  dispute: 'bg-orange-100 text-orange-800',
   security: 'bg-red-100 text-red-800',
   authentication: 'bg-gray-100 text-gray-800',
   system: 'bg-indigo-100 text-indigo-800'
@@ -589,7 +649,10 @@ function AdvancedFilters({ filters, onFiltersChange, onReset }) {
 
 export default function AuditTab() {
   const { user } = useAuth();
-  const [auditLogs, setAuditLogs] = useState(mockAuditLogs);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [hcsEvents, setHcsEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLog, setSelectedLog] = useState(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
@@ -598,6 +661,7 @@ export default function AuditTab() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('audit');
 
   const [filters, setFilters] = useState({
     action: 'all',
@@ -609,6 +673,46 @@ export default function AuditTab() {
     dateFrom: '',
     dateTo: ''
   });
+
+  // Fetch audit data from API
+  const fetchAuditData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch audit logs
+      const auditResponse = await fetch('/api/audit?type=audit&limit=100');
+      if (auditResponse.ok) {
+        const auditData = await auditResponse.json();
+        setAuditLogs(auditData.data || []);
+      }
+      
+      // Fetch HCS events
+      const hcsResponse = await fetch('/api/audit?type=hcs&limit=100');
+      if (hcsResponse.ok) {
+        const hcsData = await hcsResponse.json();
+        setHcsEvents(hcsData.data || []);
+      }
+      
+    } catch (err) {
+      console.error('Error fetching audit data:', err);
+      setError('Failed to load audit data');
+      // Fallback to mock data
+      setAuditLogs(mockAuditLogs);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load data on component mount
+  useEffect(() => {
+    fetchAuditData();
+  }, []);
+
+  // Reset pagination when switching tabs
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   // Filtered and sorted logs
   const filteredAndSortedLogs = useMemo(() => {
@@ -674,9 +778,62 @@ export default function AuditTab() {
     return filtered;
   }, [auditLogs, searchTerm, filters, sortConfig]);
 
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedLogs.length / itemsPerPage);
-  const paginatedLogs = filteredAndSortedLogs.slice(
+  // Filtered and sorted HCS events
+  const filteredAndSortedHcsEvents = useMemo(() => {
+    let filtered = hcsEvents;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(event => 
+        (event.topic_id && event.topic_id.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (event.message && event.message.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (event.contents && event.contents.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (event.sequence_number && event.sequence_number.toString().includes(searchTerm))
+      );
+    }
+
+    // Date filters
+    if (filters.dateFrom) {
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.timestamp || event.consensus_timestamp);
+        return eventDate >= new Date(filters.dateFrom);
+      });
+    }
+    if (filters.dateTo) {
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.timestamp || event.consensus_timestamp);
+        return eventDate <= new Date(filters.dateTo);
+      });
+    }
+
+    // Sorting
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aValue = a[sortConfig.key] || a.consensus_timestamp;
+        let bValue = b[sortConfig.key] || b.consensus_timestamp;
+
+        if (sortConfig.key === 'timestamp' || sortConfig.key === 'consensus_timestamp') {
+          aValue = new Date(aValue);
+          bValue = new Date(bValue);
+        }
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [hcsEvents, searchTerm, filters, sortConfig]);
+
+  // Use the new pagination from currentData
+  const currentTabData = activeTab === 'audit' ? filteredAndSortedLogs : filteredAndSortedHcsEvents;
+  const totalPagesCount = Math.ceil(currentTabData.length / itemsPerPage);
+  const paginatedTabData = currentTabData.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
@@ -690,9 +847,52 @@ export default function AuditTab() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchAuditData();
     setRefreshing(false);
+  };
+
+  // Export functions
+  const exportToCSV = (data, filename) => {
+    const headers = Object.keys(data[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => 
+        headers.map(header => {
+          const value = row[header];
+          if (typeof value === 'object' && value !== null) {
+            return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+          }
+          return `"${String(value || '').replace(/"/g, '""')}"`;
+        }).join(',')
+      )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  };
+
+  const exportToJSON = (data, filename) => {
+    const dataStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  };
+
+  const handleExport = (format) => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const exportData = activeTab === 'audit' ? filteredAndSortedLogs : hcsEvents;
+    const filename = `${activeTab}-logs-${timestamp}.${format}`;
+    
+    if (format === 'csv') {
+      exportToCSV(exportData, filename);
+    } else if (format === 'json') {
+      exportToJSON(exportData, filename);
+    }
   };
 
   const resetFilters = () => {
@@ -710,16 +910,17 @@ export default function AuditTab() {
     setCurrentPage(1);
   };
 
-  const exportLogs = () => {
-    // Simulate export functionality
-    const dataStr = JSON.stringify(filteredAndSortedLogs, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    const exportFileDefaultName = `audit-logs-export-${new Date().toISOString().split('T')[0]}.json`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-  };
+  // Calculate stats for current tab
+  const statsData = activeTab === 'audit' ? filteredAndSortedLogs : hcsEvents;
+  const stats = useMemo(() => {
+    const total = statsData.length;
+    const success = statsData.filter(log => log.status === 'success').length;
+    const failed = statsData.filter(log => log.status === 'failed').length;
+    const warning = statsData.filter(log => log.severity === 'warning').length;
+    const error = statsData.filter(log => log.severity === 'error').length;
+    
+    return { total, success, failed, warning, error };
+  }, [statsData]);
 
   const getSortIcon = (key) => {
     if (sortConfig.key !== key) {
@@ -730,14 +931,12 @@ export default function AuditTab() {
       <ArrowDown className="h-4 w-4" />;
   };
 
-  // Statistics
-  const stats = {
-    total: filteredAndSortedLogs.length,
-    success: filteredAndSortedLogs.filter(log => log.status === 'success').length,
-    failed: filteredAndSortedLogs.filter(log => log.status === 'failed').length,
-    warnings: filteredAndSortedLogs.filter(log => log.severity === 'warning').length,
-    errors: filteredAndSortedLogs.filter(log => log.severity === 'error' || log.severity === 'critical').length
-  };
+  // Final pagination variables for rendering
+  const finalTotalPages = Math.ceil(currentTabData.length / itemsPerPage);
+  const finalPaginatedData = currentTabData.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   return (
     <PermissionGuard permission={PERMISSIONS.VIEW_AUDIT_LOGS}>
@@ -756,10 +955,21 @@ export default function AuditTab() {
               <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button variant="outline" onClick={exportLogs}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <Select onValueChange={handleExport}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Export" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">
+                  <Download className="h-4 w-4 mr-2 inline" />
+                  CSV
+                </SelectItem>
+                <SelectItem value="json">
+                  <Download className="h-4 w-4 mr-2 inline" />
+                  JSON
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -792,207 +1002,474 @@ export default function AuditTab() {
           />
         )}
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Total Events</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Successful</p>
-                  <p className="text-2xl font-bold">{stats.success}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-red-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Failed</p>
-                  <p className="text-2xl font-bold">{stats.failed}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-yellow-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Warnings</p>
-                  <p className="text-2xl font-bold">{stats.warnings}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-red-600" />
-                <div>
-                  <p className="text-sm text-gray-600">Errors</p>
-                  <p className="text-2xl font-bold">{stats.errors}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Tabs for Audit Logs and HCS Events */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="audit" className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Audit Logs ({auditLogs.length})
+            </TabsTrigger>
+            <TabsTrigger value="hcs" className="flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              HCS Events ({hcsEvents.length})
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Audit Logs Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Audit Logs ({paginatedLogs.length} of {filteredAndSortedLogs.length})</CardTitle>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Show:</Label>
-                <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">5</SelectItem>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort('timestamp')}>
-                    <div className="flex items-center gap-1">
-                      Timestamp {getSortIcon('timestamp')}
-                    </div>
-                  </TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Resource</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paginatedLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div className="font-medium">
-                          {new Date(log.timestamp).toLocaleDateString()}
-                        </div>
-                        <div className="text-gray-500">
-                          {new Date(log.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-sm">{log.userName}</div>
-                        <div className="text-xs text-gray-500">{log.userRole}</div>
-                        <div className="text-xs text-gray-400 font-mono">{log.userId}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ActionBadge action={log.action} />
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium text-sm">{log.resourceName}</div>
-                        <div className="text-xs text-gray-500 capitalize">{log.resource}</div>
-                        <div className="text-xs text-gray-400 font-mono">{log.resourceId}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={log.status} />
-                    </TableCell>
-                    <TableCell>
-                      <SeverityBadge severity={log.severity} />
-                    </TableCell>
-                    <TableCell>
-                      <div className="max-w-xs">
-                        <p className="text-sm text-gray-700 truncate" title={log.description}>
-                          {log.description}
-                        </p>
-                        <CategoryBadge category={log.category} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => {
-                            setSelectedLog(log);
-                            setIsDetailsDialogOpen(true);
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {log.metadata.transactionHash && (
-                          <Button variant="ghost" size="sm" title="View on blockchain">
-                            <Hash className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <div className="text-sm text-gray-600">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredAndSortedLogs.length)} of {filteredAndSortedLogs.length} logs
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+          <TabsContent value="audit" className="space-y-6">
+            {/* Loading and Error States */}
+            {loading && (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+                  <p className="text-gray-600">Loading {activeTab === 'audit' ? 'audit logs' : 'HCS events'}...</p>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
+
+            {error && (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-red-500" />
+                  <p className="text-red-600 mb-4">{error}</p>
+                  <Button onClick={fetchAuditData} variant="outline">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {!loading && !error && (
+              <>
+                {/* Summary Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-blue-600" />
+                        <div>
+                          <p className="text-sm text-gray-600">Total Events</p>
+                          <p className="text-2xl font-bold">{stats.total}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="text-sm text-gray-600">Successful</p>
+                          <p className="text-2xl font-bold">{stats.success}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <div>
+                          <p className="text-sm text-gray-600">Failed</p>
+                          <p className="text-2xl font-bold">{stats.failed}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                        <div>
+                          <p className="text-sm text-gray-600">Warnings</p>
+                          <p className="text-2xl font-bold">{stats.warnings}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <div>
+                          <p className="text-sm text-gray-600">Errors</p>
+                          <p className="text-2xl font-bold">{stats.errors}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Audit Logs Table */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>{activeTab === 'audit' ? 'Audit Logs' : 'HCS Events'} ({finalPaginatedData.length} of {currentTabData.length})</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm">Show:</Label>
+                        <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
+                          <SelectTrigger className="w-20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="5">5</SelectItem>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="25">25</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="cursor-pointer" onClick={() => handleSort('timestamp')}>
+                            <div className="flex items-center gap-1">
+                              Timestamp {getSortIcon('timestamp')}
+                            </div>
+                          </TableHead>
+                          <TableHead>User</TableHead>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Resource</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Severity</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {finalPaginatedData.map((log) => (
+                          <TableRow key={log.id}>
+                            <TableCell>
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  {new Date(log.timestamp).toLocaleDateString()}
+                                </div>
+                                <div className="text-gray-500">
+                                  {new Date(log.timestamp).toLocaleTimeString()}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium text-sm">{log.userName}</div>
+                                <div className="text-xs text-gray-500">{log.userRole}</div>
+                                <div className="text-xs text-gray-400 font-mono">{log.userId}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <ActionBadge action={log.action} />
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium text-sm">{log.resourceName}</div>
+                                <div className="text-xs text-gray-500 capitalize">{log.resource}</div>
+                                <div className="text-xs text-gray-400 font-mono">{log.resourceId}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge status={log.status} />
+                            </TableCell>
+                            <TableCell>
+                              <SeverityBadge severity={log.severity} />
+                            </TableCell>
+                            <TableCell>
+                              <div className="max-w-xs">
+                                <p className="text-sm text-gray-700 truncate" title={log.description}>
+                                  {log.description}
+                                </p>
+                                <CategoryBadge category={log.category} />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedLog(log);
+                                    setIsDetailsDialogOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                {log.metadata.transactionHash && (
+                                  <Button variant="ghost" size="sm" title="View on blockchain">
+                                    <Hash className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+
+                    {/* Pagination */}
+                    {finalTotalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="text-sm text-gray-600">
+                          Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, currentData.length)} of {currentData.length} {activeTab === 'audit' ? 'logs' : 'events'}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <span className="text-sm">
+                            Page {currentPage} of {finalTotalPages}
+                          </span>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setCurrentPage(prev => Math.min(finalTotalPages, prev + 1))}
+              disabled={currentPage === finalTotalPages}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+           <TabsContent value="hcs" className="space-y-6">
+             {loading && (
+               <Card>
+                 <CardContent className="p-8 text-center">
+                   <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+                   <p className="text-gray-600">Loading HCS events...</p>
+                 </CardContent>
+               </Card>
+             )}
+
+             {error && (
+               <Card>
+                 <CardContent className="p-8 text-center">
+                   <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-red-500" />
+                   <p className="text-red-600 mb-4">{error}</p>
+                   <Button onClick={fetchAuditData} variant="outline">
+                     <RefreshCw className="h-4 w-4 mr-2" />
+                     Retry
+                   </Button>
+                 </CardContent>
+               </Card>
+             )}
+
+             {!loading && !error && (
+               <>
+                 {/* HCS Events Summary Stats */}
+                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                   <Card>
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2">
+                         <Database className="h-5 w-5 text-blue-600" />
+                         <div>
+                           <p className="text-sm text-gray-600">Total Events</p>
+                           <p className="text-2xl font-bold">{stats.total}</p>
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                   
+                   <Card>
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2">
+                         <CheckCircle className="h-5 w-5 text-green-600" />
+                         <div>
+                           <p className="text-sm text-gray-600">Processed</p>
+                           <p className="text-2xl font-bold">{stats.success}</p>
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                   
+                   <Card>
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2">
+                         <Clock className="h-5 w-5 text-yellow-600" />
+                         <div>
+                           <p className="text-sm text-gray-600">Pending</p>
+                           <p className="text-2xl font-bold">{stats.failed}</p>
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                   
+                   <Card>
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2">
+                         <Hash className="h-5 w-5 text-purple-600" />
+                         <div>
+                           <p className="text-sm text-gray-600">Transactions</p>
+                           <p className="text-2xl font-bold">{stats.warnings}</p>
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                   
+                   <Card>
+                     <CardContent className="p-4">
+                       <div className="flex items-center gap-2">
+                         <Globe className="h-5 w-5 text-indigo-600" />
+                         <div>
+                           <p className="text-sm text-gray-600">Topics</p>
+                           <p className="text-2xl font-bold">{stats.errors}</p>
+                         </div>
+                       </div>
+                     </CardContent>
+                   </Card>
+                 </div>
+
+                 {/* HCS Events Timeline */}
+                 <Card>
+                   <CardHeader>
+                     <div className="flex items-center justify-between">
+                       <CardTitle>HCS Events Timeline ({finalPaginatedData.length} of {currentTabData.length})</CardTitle>
+                       <div className="flex items-center gap-2">
+                         <Label className="text-sm">Show:</Label>
+                         <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
+                           <SelectTrigger className="w-20">
+                             <SelectValue />
+                           </SelectTrigger>
+                           <SelectContent>
+                             <SelectItem value="5">5</SelectItem>
+                             <SelectItem value="10">10</SelectItem>
+                             <SelectItem value="25">25</SelectItem>
+                             <SelectItem value="50">50</SelectItem>
+                           </SelectContent>
+                         </Select>
+                       </div>
+                     </div>
+                   </CardHeader>
+                   <CardContent>
+                     <Table>
+                       <TableHeader>
+                         <TableRow>
+                           <TableHead className="cursor-pointer" onClick={() => handleSort('timestamp')}>
+                             <div className="flex items-center gap-1">
+                               Timestamp {getSortIcon('timestamp')}
+                             </div>
+                           </TableHead>
+                           <TableHead>Topic ID</TableHead>
+                           <TableHead>Sequence</TableHead>
+                           <TableHead>Message</TableHead>
+                           <TableHead>Consensus</TableHead>
+                           <TableHead>Links</TableHead>
+                         </TableRow>
+                       </TableHeader>
+                       <TableBody>
+                         {finalPaginatedData.map((event) => (
+                           <TableRow key={event.id || event.sequence_number}>
+                             <TableCell>
+                               <div className="text-sm">
+                                 <div className="font-medium">
+                                   {new Date(event.timestamp || event.consensus_timestamp).toLocaleDateString()}
+                                 </div>
+                                 <div className="text-gray-500">
+                                   {new Date(event.timestamp || event.consensus_timestamp).toLocaleTimeString()}
+                                 </div>
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <div className="font-mono text-sm">
+                                 {event.topic_id}
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <div className="font-mono text-sm">
+                                 {event.sequence_number}
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <div className="max-w-xs">
+                                 <p className="text-sm text-gray-700 truncate" title={event.message || event.contents}>
+                                   {event.message || event.contents || 'No message'}
+                                 </p>
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <div className="font-mono text-xs text-gray-500">
+                                 {event.consensus_timestamp}
+                               </div>
+                             </TableCell>
+                             <TableCell>
+                               <div className="flex items-center gap-1">
+                                 {event.hashscan_link && (
+                                   <Button 
+                                     variant="ghost" 
+                                     size="sm" 
+                                     onClick={() => window.open(event.hashscan_link, '_blank')}
+                                     title="View on HashScan"
+                                   >
+                                     <ExternalLink className="h-4 w-4" />
+                                   </Button>
+                                 )}
+                                 {event.transaction_link && (
+                                   <Button 
+                                     variant="ghost" 
+                                     size="sm" 
+                                     onClick={() => window.open(event.transaction_link, '_blank')}
+                                     title="View Transaction"
+                                   >
+                                     <Hash className="h-4 w-4" />
+                                   </Button>
+                                 )}
+                               </div>
+                             </TableCell>
+                           </TableRow>
+                         ))}
+                       </TableBody>
+                     </Table>
+
+                     {/* Pagination */}
+                     {finalTotalPages > 1 && (
+                       <div className="flex items-center justify-between mt-4">
+                         <div className="text-sm text-gray-600">
+                           Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, currentTabData.length)} of {currentTabData.length} events
+                         </div>
+                         <div className="flex items-center gap-2">
+                           <Button 
+                             variant="outline" 
+                             size="sm" 
+                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                             disabled={currentPage === 1}
+                           >
+                             Previous
+                           </Button>
+                           <span className="text-sm">
+                             Page {currentPage} of {finalTotalPages}
+                           </span>
+                           <Button 
+                             variant="outline" 
+                             size="sm" 
+                             onClick={() => setCurrentPage(prev => Math.min(finalTotalPages, prev + 1))}
+                             disabled={currentPage === finalTotalPages}
+                           >
+                             Next
+                           </Button>
+                         </div>
+                       </div>
+                     )}
+                   </CardContent>
+                 </Card>
+               </>
+             )}
+           </TabsContent>
+         </Tabs>
 
         {/* Audit Log Details Dialog */}
         <AuditLogDetailsDialog 

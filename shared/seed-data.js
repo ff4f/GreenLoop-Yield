@@ -120,6 +120,26 @@ export const SEED_LOTS = [
     stakingAPY: 0.15, // 15% staking rewards
     liquidityPoolId: 'pool_001',
     tokenId: '0.0.789012', // Hedera Token ID
+    proofs: [
+      {
+        id: 'proof_001',
+        type: ProofType.PHOTO,
+        status: 'verified',
+        metadata: {
+          exifValidation: { score: 0.85 },
+          qualityScore: 0.92
+        }
+      },
+      {
+        id: 'proof_002',
+        type: ProofType.NDVI,
+        status: 'verified',
+        metadata: {
+          ndviValidation: { score: 0.88 },
+          qualityScore: 0.90
+        }
+      }
+    ],
     createdAt: new Date('2024-01-15').toISOString(),
     updatedAt: new Date('2024-01-15').toISOString()
   },
@@ -147,6 +167,17 @@ export const SEED_LOTS = [
     stakingAPY: 0.12,
     liquidityPoolId: 'pool_002',
     tokenId: '0.0.789013',
+    proofs: [
+      {
+        id: 'proof_004',
+        type: ProofType.PHOTO,
+        status: 'verified',
+        metadata: {
+          exifValidation: { score: 0.78 },
+          qualityScore: 0.82
+        }
+      }
+    ],
     createdAt: new Date('2024-01-16').toISOString(),
     updatedAt: new Date('2024-02-01').toISOString()
   },
@@ -174,6 +205,16 @@ export const SEED_LOTS = [
     stakingAPY: 0.14,
     liquidityPoolId: 'pool_001',
     tokenId: '0.0.789014',
+    proofs: [
+      {
+        id: 'proof_003',
+        type: ProofType.QC,
+        status: 'verified',
+        metadata: {
+          qualityScore: 0.87
+        }
+      }
+    ],
     createdAt: new Date('2024-01-20').toISOString(),
     updatedAt: new Date('2024-01-20').toISOString()
   },
@@ -228,6 +269,17 @@ export const SEED_LOTS = [
     stakingAPY: 0.13,
     liquidityPoolId: 'pool_002',
     tokenId: '0.0.789016',
+    proofs: [
+      {
+        id: 'proof_005',
+        type: ProofType.PHOTO,
+        status: 'verified',
+        metadata: {
+          exifValidation: { score: 0.92 },
+          qualityScore: 0.95
+        }
+      }
+    ],
     createdAt: new Date('2024-01-28').toISOString(),
     updatedAt: new Date('2024-02-15').toISOString()
   },
@@ -389,6 +441,7 @@ export const SEED_PROOFS = [
   {
     id: 'proof_001',
     projectId: 'proj_001',
+    lotId: 'lot_001',
     type: ProofType.PHOTO,
     title: 'Forest Canopy Monitoring',
     description: 'Aerial photography showing healthy forest canopy growth in conservation area.',
@@ -396,11 +449,22 @@ export const SEED_PROOFS = [
     proofHash: MOCK_IDS.PROOF_HASHES.PHOTO,
     hcsTopicId: MOCK_IDS.HCS_TOPICS.PROOF,
     submittedBy: MOCK_USERS.DEVELOPER_1.id,
+    status: 'verified',
+    metadata: {
+      exifValidation: {
+        score: 0.85,
+        gpsCoordinates: true,
+        timestamp: true,
+        cameraInfo: true
+      },
+      qualityScore: 0.92
+    },
     createdAt: new Date('2024-01-16').toISOString()
   },
   {
     id: 'proof_002',
     projectId: 'proj_001',
+    lotId: 'lot_001',
     type: ProofType.NDVI,
     title: 'Vegetation Health Index',
     description: 'NDVI satellite data showing improved vegetation density over 6-month period.',
@@ -408,11 +472,22 @@ export const SEED_PROOFS = [
     proofHash: MOCK_IDS.PROOF_HASHES.NDVI,
     hcsTopicId: MOCK_IDS.HCS_TOPICS.PROOF,
     submittedBy: MOCK_USERS.DEVELOPER_1.id,
+    status: 'verified',
+    metadata: {
+      ndviValidation: {
+        score: 0.88,
+        vegetationIndex: 0.75,
+        temporalConsistency: true,
+        spatialAccuracy: true
+      },
+      qualityScore: 0.90
+    },
     createdAt: new Date('2024-01-22').toISOString()
   },
   {
     id: 'proof_003',
     projectId: 'proj_002',
+    lotId: 'lot_003',
     type: ProofType.QC,
     title: 'Cookstove Installation Verification',
     description: 'Quality control inspection of 500 cookstove installations in rural communities.',
@@ -420,11 +495,21 @@ export const SEED_PROOFS = [
     proofHash: MOCK_IDS.PROOF_HASHES.QC,
     hcsTopicId: MOCK_IDS.HCS_TOPICS.PROOF,
     submittedBy: MOCK_USERS.DEVELOPER_2.id,
+    status: 'verified',
+    metadata: {
+      qualityScore: 0.87,
+      inspectionDetails: {
+        installationsChecked: 500,
+        passRate: 0.94,
+        complianceScore: 0.91
+      }
+    },
     createdAt: new Date('2024-01-25').toISOString()
   },
   {
     id: 'proof_004',
     projectId: 'proj_001',
+    lotId: 'lot_002',
     type: ProofType.PHOTO,
     title: 'Wildlife Biodiversity Survey',
     description: 'Camera trap footage documenting increased wildlife activity in protected areas.',
@@ -432,11 +517,22 @@ export const SEED_PROOFS = [
     proofHash: MOCK_IDS.PROOF_HASHES.PHOTO,
     hcsTopicId: MOCK_IDS.HCS_TOPICS.PROOF,
     submittedBy: MOCK_USERS.DEVELOPER_1.id,
+    status: 'verified',
+    metadata: {
+      exifValidation: {
+        score: 0.78,
+        gpsCoordinates: true,
+        timestamp: true,
+        cameraInfo: false
+      },
+      qualityScore: 0.82
+    },
     createdAt: new Date('2024-02-03').toISOString()
   },
   {
     id: 'proof_005',
     projectId: 'proj_002',
+    lotId: 'lot_005',
     type: ProofType.PHOTO,
     title: 'Community Training Session',
     description: 'Documentation of cookstove maintenance training for local community members.',
@@ -444,6 +540,16 @@ export const SEED_PROOFS = [
     proofHash: MOCK_IDS.PROOF_HASHES.PHOTO,
     hcsTopicId: MOCK_IDS.HCS_TOPICS.PROOF,
     submittedBy: MOCK_USERS.DEVELOPER_2.id,
+    status: 'verified',
+    metadata: {
+      exifValidation: {
+        score: 0.92,
+        gpsCoordinates: true,
+        timestamp: true,
+        cameraInfo: true
+      },
+      qualityScore: 0.95
+    },
     createdAt: new Date('2024-02-08').toISOString()
   }
 ];

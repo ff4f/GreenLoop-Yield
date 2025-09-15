@@ -7,14 +7,21 @@ import * as schema from './schema.js';
 
 // Environment variables validation
 if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
+  console.warn('DATABASE_URL environment variable not set, database features will be disabled');
 }
 
 // Create Neon HTTP client
-const sql = neon(process.env.DATABASE_URL);
+let sql, db;
+if (process.env.DATABASE_URL) {
+  sql = neon(process.env.DATABASE_URL);
+  // Create Drizzle database instance
+  db = drizzle(sql, { schema });
+} else {
+  // Mock database when URL not available
+  db = null;
+}
 
-// Create Drizzle database instance
-export const db = drizzle(sql, { schema });
+export { db };
 
 // Database connection utilities
 export class DatabaseService {
@@ -161,10 +168,28 @@ export class QueryHelpers {
     let q = db.select().from(carbonLots);
     // Simple filtering in memory to keep drizzle where-building minimal
     const rows = await q;
-    return rows.filter((r) => {
+    
+    // If PDI filter is requested, we need to calculate PDI for each lot
+    let lotsWithPDI = rows;
+    if (filters.minPdi !== undefined) {
+      // Import calcPDI function
+      const { calcPDI } = await import('./schema.js');
+      
+      // Calculate PDI for each lot by fetching its proofs
+      lotsWithPDI = await Promise.all(
+        rows.map(async (lot) => {
+          const proofs = await this.getProofsByLotId(lot.id);
+          const pdi = calcPDI(proofs);
+          return { ...lot, pdi };
+        })
+      );
+    }
+    
+    return lotsWithPDI.filter((r) => {
       if (filters.status && r.status !== filters.status) return false;
       if (filters.type && r.type !== filters.type) return false;
       if (filters.developerId && r.developerId !== filters.developerId) return false;
+      if (filters.minPdi !== undefined && (r.pdi || 0) < filters.minPdi) return false;
       return true;
     });
   }
@@ -225,6 +250,10 @@ export class QueryHelpers {
 
   static async getProofsByProject(projectId) {
     return await db.select().from(proofs).where(eq(proofs.projectId, projectId));
+  }
+
+  static async getProofsByLotId(lotId) {
+    return await db.select().from(proofs).where(eq(proofs.lotId, lotId));
   }
 
   // Claims
@@ -503,6 +532,7 @@ export class QueryHelpers {
 
 // Import query functions
 import { eq, desc, and } from 'drizzle-orm';
-import { sql } from '@neondatabase/serverless';
 
 export default db;
+
+// ES module exports only

@@ -8,10 +8,11 @@ import { Camera, Satellite, ShieldCheck, ExternalLink, ShoppingCart, TrendingUp,
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/hooks/use-wallet";
 import { hederaService } from "@/lib/hedera-mock";
-import { MOCK_IDS } from "@shared/schema.js";
+import { MOCK_IDS, calcPDI } from "@shared/schema.js";
 import { SUCCESS_MESSAGES, GUARDS } from "@/constants/microcopy";
 import { useProofStore } from "@/contexts/proof-store";
 import ProofModal from "./proof-modal";
+import { ProofPillGroup, PDIIndicator } from "@/components/ui/proof-pill";
 
 const LotCard = ({ lot, onPurchase }) => {
   const [isQuickBuyOpen, setIsQuickBuyOpen] = useState(false);
@@ -33,6 +34,10 @@ const LotCard = ({ lot, onPurchase }) => {
   const deliveryWindow = lot.deliveryWindow || 'Q2 2024';
   const proofCount = lot.proofCount || 3;
   const proofHashes = lot.proofHashes || ['0x123abc', '0x456def', '0x789ghi'];
+  
+  // Proof and PDI data
+  const proofs = lot.proofs || [];
+  const pdi = calcPDI(proofs);
   
   // DeFi yield properties
   const expectedYield = lot.expectedYield || 0;
@@ -164,6 +169,7 @@ const LotCard = ({ lot, onPurchase }) => {
           <div className="badge-info text-xs">
             Proofs: {proofCount}
           </div>
+          <PDIIndicator pdi={pdi} size="sm" />
           {expectedYield > 0 && (
             <div className="badge-base bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-1 text-xs">
               <TrendingUp className="w-3 h-3" />
@@ -229,6 +235,16 @@ const LotCard = ({ lot, onPurchase }) => {
           )}
         </div>
 
+        {/* Proof Pills */}
+        <div className="space-y-1">
+          <ProofPillGroup 
+            proofs={proofs} 
+            compact={true} 
+            showLinks={false}
+            className="justify-start"
+          />
+        </div>
+
         {/* DeFi Yield Information */}
         {expectedYield > 0 && (
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-2 rounded-lg space-y-1">
@@ -243,8 +259,8 @@ const LotCard = ({ lot, onPurchase }) => {
             {currentPrice > 0 && initialPrice > 0 && currentPrice !== initialPrice && (
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Price Appreciation</span>
-                <span className={`text-xs font-medium ${isAppreciating ? 'text-green-600' : 'text-red-600'}`}
->              {isAppreciating ? '+' : ''}{priceAppreciation.toFixed(2)}%
+                <span className={`text-xs font-medium ${isAppreciating ? 'text-green-600' : 'text-red-600'}`}>
+              {isAppreciating ? '+' : ''}{priceAppreciation.toFixed(2)}%
                 </span>
               </div>
             )}

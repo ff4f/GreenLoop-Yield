@@ -3,9 +3,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge";
 import { useWallet } from "@/hooks/use-wallet";
 import LotCard from "./lot-card";
 import { MOCK_USERS } from "@shared/seed-data.js";
+import { calcPDI } from "@shared/schema.js";
 
 export default function Marketplace() {
   const { isConnected, isConnecting, connect, account } = useWallet();
@@ -22,6 +25,7 @@ export default function Marketplace() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priceRange, setPriceRange] = useState({ min: 0, max: 100 });
+  const [pdiRange, setPdiRange] = useState([0]); // PDI filter (0-100)
 
   // Fetch lots from API (with fallback handled in queryClient for /api/lots)
   const { data: resp, isLoading, error } = useQuery({ queryKey: ["/api", "lots"] });
@@ -47,7 +51,11 @@ export default function Marketplace() {
     const price = Number(lot.pricePerTon ?? 0);
     const matchesPrice = price >= (priceRange.min ?? 0) && price <= (priceRange.max ?? 100);
 
-    return matchesSearch && matchesType && matchesStatus && matchesPrice;
+    // PDI filter
+    const lotPDI = calcPDI(lot.proofs || []);
+    const matchesPDI = lotPDI >= pdiRange[0];
+
+    return matchesSearch && matchesType && matchesStatus && matchesPrice && matchesPDI;
   });
 
   // Handle purchase updates: adjust available/listed tons and status in cache
@@ -184,6 +192,28 @@ export default function Marketplace() {
               data-testid="price-max"
             />
           </div>
+          {/* PDI Filter */}
+          <div className="col-span-full">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-200">Proof Density Index (PDI)</label>
+              <Badge variant="outline" className="bg-white/10 text-white border-white/20">
+                ≥{pdiRange[0]}%
+              </Badge>
+            </div>
+            <Slider
+              value={pdiRange}
+              onValueChange={setPdiRange}
+              max={100}
+              min={0}
+              step={10}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -225,6 +255,7 @@ export default function Marketplace() {
                       setTypeFilter("all");
                       setStatusFilter("all");
                       setPriceRange({ min: 0, max: 100 });
+                      setPdiRange([0]);
                     }}
                     variant="outline"
                     className="border-white/20 hover:bg-white/5"

@@ -6,8 +6,10 @@ import { z } from "zod";
 // State Machine Enums
 export const LotStatus = {
   DRAFT: "draft",
+  PROOFED: "proofed",
   PENDING_VERIFICATION: "pending_verification",
   VERIFIED: "verified",
+  MINTED: "minted",
   LISTED: "listed",
   PARTIALLY_SOLD: "partially_sold",
   SOLD_OUT: "sold_out",
@@ -74,11 +76,13 @@ export const projectValidationSchema = z.object({
 });
 
 // Guard functions
-export const canTransitionLotStatus = (from, to, hasValidUploads = false, isRetired = false) => {
+export const canTransitionLotStatus = (from, to, hasValidUploads = false, isRetired = false, pdi = 0) => {
   const transitions = {
-    [LotStatus.DRAFT]: [LotStatus.PENDING_VERIFICATION, LotStatus.CANCELLED],
+    [LotStatus.DRAFT]: [LotStatus.PROOFED, LotStatus.CANCELLED],
+    [LotStatus.PROOFED]: [LotStatus.PENDING_VERIFICATION, LotStatus.CANCELLED],
     [LotStatus.PENDING_VERIFICATION]: [LotStatus.VERIFIED, LotStatus.CANCELLED],
-    [LotStatus.VERIFIED]: [LotStatus.LISTED, LotStatus.CANCELLED],
+    [LotStatus.VERIFIED]: [LotStatus.MINTED, LotStatus.CANCELLED],
+    [LotStatus.MINTED]: [LotStatus.LISTED, LotStatus.CANCELLED],
     [LotStatus.LISTED]: [LotStatus.PARTIALLY_SOLD, LotStatus.SOLD_OUT, LotStatus.EXPIRED, LotStatus.CANCELLED],
     [LotStatus.PARTIALLY_SOLD]: [LotStatus.SOLD_OUT, LotStatus.EXPIRED, LotStatus.CANCELLED],
     [LotStatus.SOLD_OUT]: [LotStatus.RETIRED],
@@ -88,7 +92,18 @@ export const canTransitionLotStatus = (from, to, hasValidUploads = false, isReti
   };
   
   const allowedTransitions = transitions[from] || [];
-  return allowedTransitions.includes(to);
+  if (!allowedTransitions.includes(to)) return false;
+  
+  // Additional validation rules
+  if (from === LotStatus.DRAFT && to === LotStatus.PROOFED) {
+    return hasValidUploads; // Require at least one proof upload
+  }
+  
+  if (from === LotStatus.MINTED && to === LotStatus.LISTED) {
+    return pdi >= 70; // Require PDI >= 70 to list
+  }
+  
+  return true;
 };
 
 export const canTransitionOrderStatus = (from, to, hasDeliveryRef = false, hasPayoutTx = false) => {
@@ -204,6 +219,12 @@ export const orders = pgTable("orders", {
   escrowTxHash: varchar("escrow_tx_hash", { length: 255 }),
   deliveryRef: varchar("delivery_ref", { length: 255 }),
   payoutTxHash: varchar("payout_tx_hash", { length: 255 }),
+  disputeReason: text("dispute_reason"),
+  disputeRaisedBy: varchar("dispute_raised_by", { length: 255 }),
+  disputeRaisedAt: timestamp("dispute_raised_at"),
+  disputeResolvedBy: varchar("dispute_resolved_by", { length: 255 }),
+  disputeResolvedAt: timestamp("dispute_resolved_at"),
+  disputeResolution: text("dispute_resolution"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -212,14 +233,21 @@ export const orders = pgTable("orders", {
 export const proofs = pgTable("proofs", {
   id: varchar("id", { length: 255 }).primaryKey(),
   projectId: varchar("project_id", { length: 255 }).notNull(),
+  lotId: varchar("lot_id", { length: 255 }),
   type: varchar("type", { length: 20 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   imageUrl: varchar("image_url", { length: 500 }),
+  fileId: varchar("file_id", { length: 255 }),
+  manifestFileId: varchar("manifest_file_id", { length: 255 }),
   proofHash: varchar("proof_hash", { length: 255 }),
   hcsTopicId: varchar("hcs_topic_id", { length: 255 }),
+  hcsTransactionId: varchar("hcs_transaction_id", { length: 255 }),
   submittedBy: varchar("submitted_by", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).default("pending"),
+  metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Claims table
@@ -343,6 +371,20 @@ export const hcsEvents = pgTable("hcs_events", {
   processedAt: timestamp("processed_at").defaultNow().notNull(),
 });
 
+// Idempotency table for preventing duplicate requests
+export const idempotencyKeys = pgTable("idempotency_keys", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+  requestHash: varchar("request_hash", { length: 255 }).notNull(),
+  endpoint: varchar("endpoint", { length: 255 }).notNull(),
+  method: varchar("method", { length: 10 }).notNull(),
+  responseData: jsonb("response_data"),
+  statusCode: integer("status_code"),
+  userId: varchar("user_id", { length: 255 }),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertProjectSchema = createInsertSchema(projects);
 export const insertCarbonLotSchema = createInsertSchema(carbonLots);
@@ -356,6 +398,7 @@ export const insertInvestorAccountSchema = createInsertSchema(investorAccounts);
 export const insertInvestorFlowSchema = createInsertSchema(investorFlows);
 export const insertPayoutSplitSchema = createInsertSchema(payoutSplits);
 export const insertHcsEventSchema = createInsertSchema(hcsEvents);
+export const insertIdempotencyKeySchema = createInsertSchema(idempotencyKeys);
 
 // ProofLink utility class
 export class ProofLink {
@@ -647,6 +690,70 @@ export const calculateLPRewards = (liquidityProvided, poolTVL, dailyVolume, feeR
   };
 };
 
+// Calculate Proof Density Index (PDI)
+export const calcPDI = (proofs, parcelData = null) => {
+  if (!proofs || proofs.length === 0) return 0;
+  
+  const weights = {
+    [ProofType.PHOTO]: 30,
+    [ProofType.NDVI]: 40,
+    [ProofType.QC]: 30
+  };
+  
+  let totalScore = 0;
+  let maxPossibleScore = 0;
+  let bonusScore = 0;
+  
+  // Calculate score for each proof type
+  Object.values(ProofType).forEach(type => {
+    const typeProofs = proofs.filter(p => p.type === type && p.status === 'verified');
+    const hasProof = typeProofs.length > 0;
+    
+    if (hasProof) {
+      totalScore += weights[type];
+      
+      // Apply bonus scoring for quality validations
+      typeProofs.forEach(proof => {
+        if (proof.metadata) {
+          // EXIF/GPS validation bonus for PHOTO proofs
+          if (type === ProofType.PHOTO && proof.metadata.exifValidation) {
+            const exifScore = proof.metadata.exifValidation.score || 0;
+            if (exifScore >= 0.8) {
+              bonusScore += 10; // High quality EXIF data
+            } else if (exifScore >= 0.6) {
+              bonusScore += 5; // Good EXIF data
+            }
+          }
+          
+          // NDVI sanity check bonus for NDVI proofs
+          if (type === ProofType.NDVI && proof.metadata.ndviValidation) {
+            const ndviScore = proof.metadata.ndviValidation.score || 0;
+            if (ndviScore >= 0.8) {
+              bonusScore += 15; // High quality NDVI matching
+            } else if (ndviScore >= 0.6) {
+              bonusScore += 8; // Good NDVI matching
+            }
+          }
+          
+          // Additional quality indicators
+          if (proof.metadata.qualityScore && proof.metadata.qualityScore >= 0.9) {
+            bonusScore += 5; // Overall high quality proof
+          }
+        }
+      });
+    }
+    maxPossibleScore += weights[type];
+  });
+  
+  // Calculate base PDI
+  const basePDI = maxPossibleScore > 0 ? (totalScore / maxPossibleScore) * 100 : 0;
+  
+  // Apply bonus (max 20% bonus)
+  const finalPDI = Math.min(100, basePDI + Math.min(20, bonusScore));
+  
+  return Math.round(finalPDI);
+};
+
 // DeFi Yield Tracking Schema
 export const yieldPositionsTable = {
   id: 'text',
@@ -713,8 +820,10 @@ export const lpPositionsTable = {
 // State Machine Definitions
 const LOT_STATES = {
   DRAFT: 'draft',
+  PROOFED: 'proofed',
   PENDING_VERIFICATION: 'pending_verification',
   VERIFIED: 'verified',
+  MINTED: 'minted',
   LISTED: 'listed',
   PARTIALLY_SOLD: 'partially_sold',
   SOLD_OUT: 'sold_out',
@@ -748,9 +857,11 @@ const CLAIM_STATES = {
 
 // State Machine Transition Rules
 const LOT_TRANSITIONS = {
-  [LOT_STATES.DRAFT]: [LOT_STATES.PENDING_VERIFICATION, LOT_STATES.CANCELLED],
+  [LOT_STATES.DRAFT]: [LOT_STATES.PROOFED, LOT_STATES.CANCELLED],
+  [LOT_STATES.PROOFED]: [LOT_STATES.PENDING_VERIFICATION, LOT_STATES.CANCELLED],
   [LOT_STATES.PENDING_VERIFICATION]: [LOT_STATES.VERIFIED, LOT_STATES.CANCELLED],
-  [LOT_STATES.VERIFIED]: [LOT_STATES.LISTED, LOT_STATES.CANCELLED],
+  [LOT_STATES.VERIFIED]: [LOT_STATES.MINTED, LOT_STATES.CANCELLED],
+  [LOT_STATES.MINTED]: [LOT_STATES.LISTED, LOT_STATES.CANCELLED],
   [LOT_STATES.LISTED]: [LOT_STATES.PARTIALLY_SOLD, LOT_STATES.SOLD_OUT, LOT_STATES.EXPIRED, LOT_STATES.CANCELLED],
   [LOT_STATES.PARTIALLY_SOLD]: [LOT_STATES.SOLD_OUT, LOT_STATES.EXPIRED, LOT_STATES.CANCELLED],
   [LOT_STATES.SOLD_OUT]: [LOT_STATES.RETIRED],
@@ -1044,3 +1155,6 @@ export {
   getStateInfo,
   validateStateTransitionHistory
 };
+
+// ES modules exports for Vite compatibility
+// All exports are already defined above using export statements

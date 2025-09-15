@@ -14,6 +14,7 @@ export class HederaFileService {
     
     return {
       fileId: randomFileId,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
       size: content.length,
       timestamp: new Date().toISOString(),
       contentType
@@ -37,11 +38,53 @@ export class HederaFileService {
     
     return 'Mock file content';
   }
+  
+  static async getFileContents(fileId) {
+    // Simulate file contents retrieval delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const contents = await this.getFile(fileId);
+    
+    return {
+      fileId,
+      contents,
+      size: contents.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+  
+  static async updateFile(fileId, content, contentType = 'application/octet-stream') {
+    // Simulate file update delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    return {
+      fileId,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
+      size: content.length,
+      timestamp: new Date().toISOString(),
+      contentType
+    };
+  }
 }
 
 // Hedera Consensus Service (HCS) Mock
 export class HederaConsensusService {
   static sequenceCounters = {};
+  
+  static async createTopic(memo = '') {
+    // Simulate topic creation delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const topicId = `0.0.${Math.floor(Math.random() * 1000000) + 100000}`;
+    this.sequenceCounters[topicId] = 0;
+    
+    return {
+      topicId,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
+      memo,
+      timestamp: new Date().toISOString()
+    };
+  }
   
   static async submitMessage(topicId, message) {
     // Simulate consensus delay
@@ -57,7 +100,8 @@ export class HederaConsensusService {
       topicId,
       sequenceNumber: this.sequenceCounters[topicId],
       timestamp: new Date().toISOString(),
-      message
+      message,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`
     };
   }
   
@@ -79,10 +123,43 @@ export class HederaConsensusService {
     
     return messages;
   }
+  
+  static async getTopicInfo(topicId) {
+    // Simulate topic info retrieval delay
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    return {
+      topicId,
+      memo: `Mock topic for ${topicId}`,
+      adminKey: null,
+      submitKey: null,
+      autoRenewPeriod: 7776000, // 90 days in seconds
+      autoRenewAccount: null,
+      runningHash: '0x1234567890abcdef',
+      sequenceNumber: this.sequenceCounters[topicId] || 0
+    };
+  }
 }
 
 // Hedera Token Service (HTS) Mock
 export class HederaTokenService {
+  static async createToken(name, symbol, decimals, initialSupply) {
+    // Simulate token creation delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const tokenId = `0.0.${Math.floor(Math.random() * 1000000) + 400000}`;
+    
+    return {
+      tokenId,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
+      name,
+      symbol,
+      decimals,
+      totalSupply: initialSupply,
+      timestamp: new Date().toISOString()
+    };
+  }
+  
   static async createFungibleToken(name, symbol, initialSupply) {
     // Simulate token creation delay
     await new Promise(resolve => setTimeout(resolve, 1200));
@@ -108,6 +185,18 @@ export class HederaTokenService {
     };
   }
   
+  static async mintToken(tokenId, amount) {
+    // Simulate token minting delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    return {
+      tokenId,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
+      newTotalSupply: amount,
+      timestamp: new Date().toISOString()
+    };
+  }
+  
   static async transferToken(tokenId, fromAccount, toAccount, amount) {
     // Simulate transfer delay
     await new Promise(resolve => setTimeout(resolve, 900));
@@ -117,6 +206,7 @@ export class HederaTokenService {
     
     return {
       txHash: randomTxHash,
+      transactionId: `0.0.${Math.floor(Math.random() * 1000000)}@${Date.now()}.${Math.floor(Math.random() * 1000000000)}`,
       timestamp: new Date().toISOString(),
       status: 'SUCCESS',
       fee: '0.001'
@@ -173,6 +263,17 @@ export class HederaMockService {
   static token = HederaTokenService;
   static transaction = HederaTransactionService;
   
+  static async testConnection() {
+    // Simulate connection test delay
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    return {
+      success: true,
+      network: 'mock',
+      timestamp: new Date().toISOString()
+    };
+  }
+  
   // Generate demo proof with consistent IDs
   static generateDemoProof(type) {
     const proofHashes = {
@@ -186,6 +287,19 @@ export class HederaMockService {
   static async simulateNetworkDelay(ms = 500) {
     await new Promise(resolve => setTimeout(resolve, ms));
   }
+  
+  static async testConnection() {
+     // Simulate connection test delay
+     await new Promise(resolve => setTimeout(resolve, 200));
+     
+     return {
+       success: true,
+       network: 'mock',
+       timestamp: new Date().toISOString()
+     };
+   }
 }
 
 export default HederaMockService;
+
+// ES module exports only

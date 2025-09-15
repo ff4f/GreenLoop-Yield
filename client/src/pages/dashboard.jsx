@@ -17,6 +17,7 @@ import ProofFeed from "@/components/proof-feed";
 import ClaimsHelper from "@/components/claims-helper";
 import ProofTray from "@/components/proof-tray";
 import GeoJSONMap from "@/components/geojson-map";
+import InvestorTab from "@/components/investor-tab";
 
 
 // Mock Hedera IDs generator
@@ -44,6 +45,7 @@ function DashboardContent() {
     { value: "project-sheets", label: "Project Sheets", icon: null },
     { value: "marketplace", label: "Marketplace", icon: null },
     { value: "orders", label: "Orders", icon: null },
+    { value: "investor", label: "Investor Pool", icon: null },
     { value: "proof-feed", label: "Proof Feed", icon: null },
     { value: "proof-tray", label: "Proof Tray", icon: null },
     { value: "map-view", label: "Map View", icon: null },
@@ -123,6 +125,15 @@ function DashboardContent() {
           source: 'Map View'
         });
         break;
+      case 'investor':
+        addEvidence({
+          kind: 'tx',
+          id: generateMockHederaId('tx'),
+          label: 'Investment Transaction',
+          meta: { action: 'pool transaction', type: 'investor-deposit' },
+          source: 'Investor Pool'
+        });
+        break;
       case 'claims-helper':
         addEvidence({
           kind: 'tx',
@@ -175,6 +186,15 @@ function DashboardContent() {
               onPrimaryAction={() => handlePrimaryAction('orders')}
             />
             <Orders />
+          </TabsContent>
+
+          {/* Investor Tab */}
+          <TabsContent value="investor" className="space-y-6">
+            <SubheaderStrip 
+              activeTab={activeTab} 
+              onPrimaryAction={() => handlePrimaryAction('investor')}
+            />
+            <InvestorTab />
           </TabsContent>
 
           {/* Proof Feed Tab */}

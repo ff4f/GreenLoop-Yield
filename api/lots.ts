@@ -1,14 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 // @ts-ignore
-import { 
-  LotStatus, 
-  canTransitionLotStatus,
-  calculateOrderFees,
-  ProofLink,
-  MOCK_IDS
-} from '../shared/seed-data.js';
+// @ts-ignore
+import { LotStatus, MOCK_IDS, ProofLink, calculateOrderFees, canTransitionLotStatus } from '../shared/schema.js';
+// @ts-ignore
+import { calcPDI } from '../shared/schema.js';
 // @ts-ignore
 import { db, QueryHelpers } from '../shared/database.js';
+// @ts-ignore
+import { SEED_LOTS } from '../shared/seed-data.js';
 // @ts-ignore
 import { HederaMockService } from '../shared/hedera-mock.js';
 // @ts-ignore
@@ -27,12 +26,14 @@ const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().
 // Helper function to log analytics
 // @ts-ignore
 const logAnalytics = async (metric: string, value: number, metadata: any = {}) => {
-  await QueryHelpers.createAnalytics({
-    event: metric,
-    value,
-    metadata,
-    userId: metadata.userId || 'system'
-  });
+  if (db) {
+    await QueryHelpers.createAnalytics({
+      event: metric,
+      value,
+      metadata,
+      userId: metadata.userId || 'system'
+    });
+  }
 };
 
 // Helper function to log audit trail
@@ -95,12 +96,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const status = query.status as string;
           const type = query.type as string;
           const developerId = query.developerId as string;
+          const minPdi = query.minPdi ? parseInt(query.minPdi as string) : undefined;
           
-          const filteredLots = await QueryHelpers.getCarbonLots({ 
-            status: status as LotStatus, 
-            type, 
-            developerId 
-          });
+          let filteredLots;
+          
+          // Try database first, fallback to mock data if database unavailable
+          try {
+            filteredLots = await QueryHelpers.getCarbonLots({ 
+              status: status as LotStatus, 
+              type, 
+              developerId,
+              minPdi
+            });
+          } catch (dbError: any) {
+             console.log('Database unavailable, using mock data:', dbError.message);
+             
+             // Use mock data and apply filters
+             filteredLots = SEED_LOTS.map((lot: any) => {
+               // Calculate PDI for each lot using proofs
+               const pdi = calcPDI(lot.proofs || []);
+               return { ...lot, pdi };
+             });
+             
+             // Apply filters
+             if (status) {
+               filteredLots = filteredLots.filter((lot: any) => lot.status === status);
+             }
+             if (type) {
+               filteredLots = filteredLots.filter((lot: any) => lot.type === type);
+             }
+             if (developerId) {
+               filteredLots = filteredLots.filter((lot: any) => lot.developerId === developerId);
+             }
+             if (minPdi !== undefined) {
+               filteredLots = filteredLots.filter((lot: any) => lot.pdi >= minPdi);
+             }
+           }
           
           // Log marketplace view analytics
           await logAnalytics('marketplace_view', 1, { 
@@ -320,25 +351,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
           }
           
-          // Check if transition is allowed
-          if (!canTransitionLotStatus(existingLot.status, newStatus, hasValidUploads, isRetired)) {
+          // Calculate PDI for validation
+          const proofs = await QueryHelpers.getProofsByLotId(lotId) || [];
+          const pdi = calcPDI(proofs);
+          
+          // Check if transition is allowed with PDI validation
+          if (!canTransitionLotStatus(existingLot.status, newStatus, hasValidUploads, isRetired, pdi)) {
+            let errorMessage = `Cannot transition lot from ${existingLot.status} to ${newStatus}. Please check the requirements.`;
+            
+            // Specific error messages for PDI validation
+            if (existingLot.status === LotStatus.MINTED && newStatus === LotStatus.LISTED && pdi < 70) {
+              errorMessage = `Cannot list lot with PDI ${pdi}%. Minimum PDI of 70% required. Please upload more proof documents.`;
+            }
+            
             return res.status(400).json({ 
               error: `Invalid status transition from ${existingLot.status} to ${newStatus}`,
               toast: {
                 type: 'error',
-                message: `Cannot transition lot from ${existingLot.status} to ${newStatus}. Please check the requirements.`
+                message: errorMessage
               }
             });
           }
           
-          // Additional validation for DRAFT -> LISTED
-          if (existingLot.status === LotStatus.VERIFIED && newStatus === LotStatus.LISTED) {
+          // Additional validation for DRAFT -> PROOFED
+          if (existingLot.status === LotStatus.DRAFT && newStatus === LotStatus.PROOFED) {
             if (!hasValidUploads) {
               return res.status(400).json({ 
-                error: 'Valid uploads required to list lot',
+                error: 'Valid uploads required to proof lot',
                 toast: {
                   type: 'error',
-                  message: 'Please upload required project documents before listing the lot.'
+                  message: 'Please upload at least one proof document before marking as proofed.'
                 }
               });
             }

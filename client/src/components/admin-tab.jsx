@@ -45,7 +45,10 @@ import {
   Clock,
   MapPin,
   Phone,
-  Building
+  Building,
+  Scale,
+  FileText,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth, PermissionGuard } from './wallet-guard';
 import { PERMISSIONS, USER_ROLES } from '../../../shared/guards';
@@ -168,6 +171,41 @@ const mockUsers = [
 ];
 
 // Mock system configuration
+const mockDisputes = [
+  {
+    id: 'dispute-001',
+    orderId: 'order-001',
+    lotId: 'lot-001',
+    raisedBy: 'user-003',
+    raisedByName: 'Green Corp',
+    reason: 'Quality does not match description',
+    description: 'The carbon credits received do not match the quality standards described in the lot listing.',
+    status: 'pending',
+    createdAt: '2024-01-25T10:30:00Z',
+    resolvedAt: null,
+    resolvedBy: null,
+    resolution: null,
+    orderValue: 50000,
+    evidence: ['photo1.jpg', 'report.pdf']
+  },
+  {
+    id: 'dispute-002',
+    orderId: 'order-002',
+    lotId: 'lot-002',
+    raisedBy: 'user-001',
+    raisedByName: 'John Kamau',
+    reason: 'Payment not received',
+    description: 'Payment for the carbon credits has not been received despite order completion.',
+    status: 'resolved',
+    createdAt: '2024-01-20T14:15:00Z',
+    resolvedAt: '2024-01-22T16:30:00Z',
+    resolvedBy: 'admin-001',
+    resolution: 'settle',
+    orderValue: 25000,
+    evidence: ['transaction_proof.pdf']
+  }
+];
+
 const mockSystemConfig = {
   platform: {
     name: 'GreenLoop Yield',
@@ -240,6 +278,12 @@ const kycStatusColors = {
   pending: 'bg-yellow-100 text-yellow-800',
   rejected: 'bg-red-100 text-red-800',
   not_submitted: 'bg-gray-100 text-gray-800'
+};
+
+const disputeStatusColors = {
+  pending: 'bg-yellow-100 text-yellow-800',
+  resolved: 'bg-green-100 text-green-800',
+  cancelled: 'bg-gray-100 text-gray-800'
 };
 
 function RoleBadge({ role }) {
@@ -563,6 +607,81 @@ function UserDetailsDialog({ user, isOpen, onClose, onSave }) {
                 <pre className="bg-gray-50 p-4 rounded text-sm overflow-auto">
                   {JSON.stringify(editedUser.metadata, null, 2)}
                 </pre>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Disputes Tab */}
+          <TabsContent value="disputes" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Dispute Management</h2>
+              <Button onClick={() => setRefreshing(true)} disabled={refreshing}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Active Disputes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dispute ID</TableHead>
+                      <TableHead>Order ID</TableHead>
+                      <TableHead>Raised By</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Order Value</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {disputes.map((dispute) => (
+                      <TableRow key={dispute.id}>
+                        <TableCell className="font-medium">{dispute.id}</TableCell>
+                        <TableCell>{dispute.orderId}</TableCell>
+                        <TableCell>{dispute.raisedByName}</TableCell>
+                        <TableCell className="max-w-xs truncate">{dispute.reason}</TableCell>
+                        <TableCell>${dispute.orderValue.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge className={dispute.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}>
+                            {dispute.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{new Date(dispute.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedDispute(dispute);
+                                setIsDisputeDialogOpen(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {dispute.status === 'pending' && (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedDispute(dispute);
+                                  setIsDisputeDialogOpen(true);
+                                }}
+                              >
+                                Resolve
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>
@@ -966,6 +1085,9 @@ export default function AdminTab() {
     kycStatus: 'all'
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [disputes, setDisputes] = useState(mockDisputes);
+  const [selectedDispute, setSelectedDispute] = useState(null);
+  const [isDisputeDialogOpen, setIsDisputeDialogOpen] = useState(false);
 
   // Filtered users
   const filteredUsers = useMemo(() => {
@@ -1006,6 +1128,19 @@ export default function AdminTab() {
     setSystemConfig(newConfig);
   };
 
+  const handleKycApproval = (userId, action) => {
+    setUsers(prev => prev.map(user => {
+      if (user.id === userId) {
+        return {
+          ...user,
+          kycStatus: action === 'approve' ? 'verified' : 'rejected',
+          isVerified: action === 'approve'
+        };
+      }
+      return user;
+    }));
+  };
+
   // Statistics
   const stats = {
     totalUsers: users.length,
@@ -1040,10 +1175,14 @@ export default function AdminTab() {
 
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="users" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               User Management
+            </TabsTrigger>
+            <TabsTrigger value="disputes" className="flex items-center gap-2">
+              <Scale className="h-4 w-4" />
+              Disputes
             </TabsTrigger>
             <TabsTrigger value="config" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -1280,6 +1419,26 @@ export default function AdminTab() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            {user.kycStatus === 'pending' && (
+                              <>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-green-600"
+                                  onClick={() => handleKycApproval(user.id, 'approve')}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-red-600"
+                                  onClick={() => handleKycApproval(user.id, 'reject')}
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
                             <Button variant="ghost" size="sm">
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -1400,6 +1559,98 @@ export default function AdminTab() {
           }}
           onSave={handleUserSave}
         />
+
+        {/* Dispute Resolution Dialog */}
+        <Dialog open={isDisputeDialogOpen} onOpenChange={setIsDisputeDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Dispute Resolution</DialogTitle>
+            </DialogHeader>
+            {selectedDispute && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Dispute ID</Label>
+                    <p className="text-sm text-gray-600">{selectedDispute.id}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Order ID</Label>
+                    <p className="text-sm text-gray-600">{selectedDispute.orderId}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Raised By</Label>
+                    <p className="text-sm text-gray-600">{selectedDispute.raisedByName}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Order Value</Label>
+                    <p className="text-sm text-gray-600">${selectedDispute.orderValue.toLocaleString()}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium">Reason</Label>
+                  <p className="text-sm text-gray-600">{selectedDispute.reason}</p>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium">Description</Label>
+                  <p className="text-sm text-gray-600">{selectedDispute.description}</p>
+                </div>
+                
+                {selectedDispute.evidence && selectedDispute.evidence.length > 0 && (
+                  <div>
+                    <Label className="text-sm font-medium">Evidence</Label>
+                    <div className="flex gap-2 mt-1">
+                      {selectedDispute.evidence.map((file, index) => (
+                        <Badge key={index} variant="outline">{file}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {selectedDispute.status === 'pending' && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <Label className="text-sm font-medium">Resolution</Label>
+                    <div className="flex gap-2">
+                      <Button 
+                        onClick={() => {
+                          // Handle settle resolution
+                          console.log('Settling dispute:', selectedDispute.id);
+                          setIsDisputeDialogOpen(false);
+                        }}
+                        className="flex-1"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Settle in Favor
+                      </Button>
+                      <Button 
+                        variant="destructive"
+                        onClick={() => {
+                          // Handle refund resolution
+                          console.log('Refunding dispute:', selectedDispute.id);
+                          setIsDisputeDialogOpen(false);
+                        }}
+                        className="flex-1"
+                      >
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Refund Order
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {selectedDispute.status === 'resolved' && (
+                  <div className="pt-4 border-t">
+                    <Label className="text-sm font-medium">Resolution</Label>
+                    <p className="text-sm text-gray-600 capitalize">
+                      {selectedDispute.resolution} - Resolved on {new Date(selectedDispute.resolvedAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </PermissionGuard>
   );

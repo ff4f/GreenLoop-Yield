@@ -21,14 +21,100 @@ function logAudit(userId: string, action: string, entityType: string, entityId: 
   });
 }
 
+// HashScan link builder
+function buildHashScanLink(topicId: string, sequenceNumber: string): string {
+  const network = process.env.HEDERA_NETWORK || 'testnet';
+  return `https://hashscan.io/${network}/topic/${topicId}/message/${sequenceNumber}`;
+}
+
+// Build transaction link
+function buildTransactionLink(txHash: string): string {
+  const network = process.env.HEDERA_NETWORK || 'testnet';
+  return `https://hashscan.io/${network}/transaction/${txHash}`;
+}
+
 export default async function handler(req: any, res: any) {
   const { method, query } = req;
   const userId = req.headers['x-user-id'] || 'anonymous';
   const userRole = req.headers['x-user-role'] || 'user';
 
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-user-id, x-user-role');
+
+  if (method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
     if (method === 'GET') {
-      const { type, limit = '50', topicId, entityType, entityId } = query;
+      const { type, limit = '50', topicId, entityType, entityId, lotId, orderId, fromDate, toDate } = query;
+
+      // GET /api/audit/feed - Main audit feed endpoint
+      if (type === 'feed' || req.url?.includes('/feed')) {
+        const filters: any = { limit: parseInt(limit) };
+        
+        // Apply filters
+        if (lotId) filters.lotId = lotId;
+        if (orderId) filters.orderId = orderId;
+        if (userId && userId !== 'anonymous') filters.userId = userId;
+        if (fromDate) filters.fromDate = fromDate;
+        if (toDate) filters.toDate = toDate;
+        if (topicId) filters.topicId = topicId;
+
+        // Get HCS events with filters
+        const hcsEvents = await QueryHelpers.getHcsEvents(filters);
+        
+        // Enhance events with HashScan links and additional metadata
+        const enhancedEvents = hcsEvents.map((event: any) => {
+          const parsedMessage = event.parsedMessage || {};
+          
+          return {
+            id: event.id,
+            eventType: parsedMessage.type || 'unknown',
+            topicId: event.topicId,
+            sequenceNumber: event.sequenceNumber,
+            consensusTimestamp: event.consensusTimestamp,
+            timestamp: new Date(event.consensusTimestamp).toISOString(),
+            lotId: parsedMessage.lotId || null,
+            orderId: parsedMessage.orderId || null,
+            userId: parsedMessage.userId || parsedMessage.submittedBy || null,
+            proofType: parsedMessage.proofType || null,
+            messageContent: event.messageContent,
+            parsedMessage: parsedMessage,
+            hashScanLink: buildHashScanLink(event.topicId, event.sequenceNumber),
+            transactionLink: parsedMessage.txHash ? buildTransactionLink(parsedMessage.txHash) : null,
+            runningHash: event.runningHash,
+            confirmed: event.confirmed || false,
+            createdAt: event.createdAt,
+            processedAt: event.processedAt
+          };
+        });
+        
+        // Sort by timestamp (newest first)
+        enhancedEvents.sort((a: any, b: any) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        
+        logAnalytics('audit_feed_viewed', {
+          userId,
+          userRole,
+          filters,
+          resultCount: enhancedEvents.length
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: enhancedEvents,
+          meta: {
+            count: enhancedEvents.length,
+            limit: parseInt(limit),
+            filters,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
 
       // Get audit logs
       if (type === 'audit') {
@@ -101,8 +187,22 @@ export default async function handler(req: any, res: any) {
 
         return res.status(200).json({
           success: true,
-          data: status
+          data: status,
+          timestamp: new Date().toISOString()
         });
+      }
+
+      // Health endpoint for mirror worker
+      if (type === 'health' || req.url?.includes('/health')) {
+        const healthStatus = await mirrorWorker.getHealthStatus();
+        
+        logAnalytics('mirror_health_checked', {
+          userId,
+          userRole,
+          status: healthStatus.status
+        });
+
+        return res.status(healthStatus.success ? 200 : 503).json(healthStatus);
       }
 
       // Get analytics data

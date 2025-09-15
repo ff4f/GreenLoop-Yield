@@ -7,6 +7,8 @@ import { calculatePayoutSplit } from '../shared/schema.js';
 import { HederaMockService } from '../shared/hedera-mock.js';
 // @ts-ignore
 import { HederaRealService } from '../shared/hedera-real.js';
+// @ts-ignore
+import { idempotencyMiddleware, requireIdempotencyKey } from '../middleware/idempotency.js';
 
 // Use real or mock service based on environment
 const HederaService = process.env.USE_REAL_HEDERA === 'true' ? HederaRealService : HederaMockService;
@@ -195,6 +197,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         
         if (action === 'deposit') {
+          // Apply idempotency middleware for deposit operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for deposit operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
           if (!amount || amount <= 0) {
             return res.status(400).json({ error: 'Valid deposit amount required' });
           }
@@ -261,6 +275,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           });
         } else if (action === 'withdraw') {
+          // Apply idempotency middleware for withdraw operation
+          await new Promise((resolve, reject) => {
+            idempotencyMiddleware(req, res, (err: any) => {
+              if (err) reject(err);
+              else resolve(null);
+            });
+          });
+          
+          // Require idempotency key for withdraw operation
+          const idempotencyCheck = requireIdempotencyKey(req, res, () => {});
+          if (idempotencyCheck) return;
+          
           if (!amount || amount <= 0) {
             return res.status(400).json({ error: 'Valid withdrawal amount required' });
           }
